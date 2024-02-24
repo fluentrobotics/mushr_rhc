@@ -103,7 +103,7 @@ class ControlNode:
             "/car/goal", PoseStamped, self.cb_goal, queue_size=1
         )
 
-        rospy.Subscriber("/car/global_planner/path",
+        rospy.Subscriber(rospy.get_param("~car_name") + "/global_planner/path",
                 Path, self.cb_path, queue_size=1)
 
         rospy.Subscriber(rospy.get_param("~pose_cb"),
