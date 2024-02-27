@@ -4,9 +4,9 @@ import controlnode
 import threading
 import signal
 import time
-
 if __name__ == '__main__':
-    time.sleep(5)
+
+    time.sleep(3)
     node = controlnode.ControlNode("controller")
 
     signal.signal(signal.SIGINT, node.shutdown)

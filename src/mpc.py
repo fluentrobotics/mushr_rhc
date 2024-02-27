@@ -20,7 +20,7 @@ class ModelPredictiveController(BaseController):
             to compute the next control control against
         input:
             pose - current pose of the car, represented as [x, y, heading]
-        output:
+        output:2
             i - referencence index
         '''
         with self.path_lock:
@@ -28,13 +28,18 @@ class ModelPredictiveController(BaseController):
             diff = self.path[:, :3] - pose
             dist = np.linalg.norm(diff[:, :2], axis=1)
             index = dist.argmin()
+            #print("path length: " + str(len(self.path)))
+            #print('init ind: ' + str(index))
+            
             while(dist[index] < self.waypoint_lookahead and index <= len(self.path) - 2):
                 index += 1
                 index = min(index, len(self.path)-1)
+             
             if(len(self.path)==1):
                 self.index = 0
                 return 0  # handle special case of a simple go-to pose
             self.index = index
+            #print('returning ind: ' + str(index))
             return index
 
     def get_control(self, pose, index):
@@ -55,17 +60,20 @@ class ModelPredictiveController(BaseController):
         rollouts = np.zeros((self.K, self.T, 3))
         rollouts[:, 0, :] = np.array(pose)
 
-        speed_sign = np.array([-1, 0, 1])  # we got 3 speeds, forward V, 0, reverse V, where V is the desired speed from the xyhv waypoint
+        speed_sign = np.array([-1*self.speed, 0 ,1*self.speed])
+        #speed_sign = np.array([self.speed])  # we got 3 speeds, forward V, 0, reverse V, where V is the desired speed from the xyhv waypoint
         min_cost = 1000000000   # very large initial cost because we are looking for the minimum.
-        min_cost_ctrl = np.zeros(2)  # default controls are no steering and no throttle
-        for sign in range(3):
-            self.trajs[:, :, 0] = self.path[index, 3] * speed_sign[sign]  # multiply magnitude with sign
-
+        #min_cost_ctrl = np.zeros(2)  # default controls are no steering and no throttle
+        min_cost_ctrl=np.array([0,0])
+        for sign in range(len(speed_sign)):
+            #self.trajs[:, :, 0] = self.path[index, 3] * speed_sign[sign]  # multiply magnitude with sign
+            self.trajs[:,:,0] = speed_sign[sign]
+        
             # perform rollouts for each control trajectory
-
             for t in range(1, self.T):
                 cur_x = rollouts[:, t - 1]
                 xdot, ydot, thetadot = self.apply_kinematics(cur_x, self.trajs[:, t - 1])
+                #print("xdot: " + str(xdot))
                 rollouts[:, t, 0] = cur_x[:, 0] + xdot
                 rollouts[:, t, 1] = cur_x[:, 1] + ydot
                 rollouts[:, t, 2] = cur_x[:, 2] + thetadot
@@ -76,6 +84,8 @@ class ModelPredictiveController(BaseController):
             if(min_cost > costs[min_control]):  # if the min is less than global min,
                 min_cost = costs[min_control]  # reset global min
                 min_cost_ctrl = np.copy(self.trajs[min_control][0])  # save the last best control set.
+
+        #print(min_cost)
         return min_cost_ctrl
 
     def reset_state(self):
@@ -106,18 +116,29 @@ class ModelPredictiveController(BaseController):
         '''
         with self.path_lock:
             self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.33))
-            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
-            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
+            #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
+            #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
+            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.123))
+            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.123))
 
             self.K = int(rospy.get_param("mpc/K", 62))
             self.T = int(rospy.get_param("mpc/T", 8))
 
-            self.speed = float(rospy.get_param("mpc/speed", 1.0))
-            self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.5))
-            self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 100.0))
+            self.speed = float(rospy.get_param("mpc/speed", 0.4))
+            
+            #self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.5))
+            self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.25))
+            #self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 100.0))
+            self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 50.0))
             # Average distance from the current reference pose to lookahed.
-            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", 0.5))
+            #self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", 0.5))
+            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", self.speed*1.5))
+            print("== MPC Reference Speed: " + str(self.speed) + " ==")
+            print("== MPC Look Ahead: " + str(self.waypoint_lookahead) + " ==")
+            print("== MPC Goal Tolerance: " + str(self.finish_threshold) + " ==")
+            
             self.collision_w = float(rospy.get_param("mpc/collision_w", 1e5))
+            #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.6))
