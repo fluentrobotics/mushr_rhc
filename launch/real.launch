@@ -3,7 +3,7 @@
     <arg name="car_pose" default="/particle_filter/inferred_pose" />
     <arg name="controller" default="MPC" />
 
-    <node pkg="mushr_rhc" type="main.py" name="controller" output="screen">
+    <node pkg="mushr_rhc" type="main.py" name="$(arg car_name)_controller" output="screen">
         <param name="type" value="$(arg controller)" />
         <param name="pose_cb" value="/$(arg car_name)$(arg car_pose)" />
         <param name="car_name" value="$(arg car_name)" />

@@ -118,8 +118,8 @@ class ModelPredictiveController(BaseController):
             self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.33))
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
-            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.123))
-            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.123))
+            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.163))
+            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.163))
 
             self.K = int(rospy.get_param("mpc/K", 62))
             self.T = int(rospy.get_param("mpc/T", 8))

@@ -89,62 +89,9 @@ class ControlNode:
         rospy.Service("~reset/hard", SrvEmpty, self.srv_reset_hard)
         rospy.Service("~reset/state", SrvEmpty,  self.srv_reset_state)
         rospy.Service("~reset/params", SrvEmpty, self.srv_reset_params)
-        """
-        rospy.Subscriber("/initialpose",
-                PoseWithCovarianceStamped, self.cb_init_pose, queue_size=1)
-
-        rospy.Subscriber(
-            "/clicked_point",
-            PointStamped,
-            self.clicked_point_cb,
-            queue_size=1
-        )
-
-        rospy.Subscriber(
-            "/car/goal", PoseStamped, self.cb_goal, queue_size=1
-            #"/mushr2/goal", PoseStamped, self.cb_goal, queue_size=1
-        )
-
-        rospy.Subscriber(rospy.get_param("~car_name") + "/global_planner/path",
-        #rospy.Subscriber("mushr2" + "/global_planner/path",
-                Path, self.cb_path, queue_size=1)
-
-        rospy.Subscriber(rospy.get_param("~pose_cb"),
-        #rospy.Subscriber("/mushr2/odom",
-                         PoseStamped, self.cb_pose, queue_size=10)
-
-        self.rp_ctrls = rospy.Publisher(
-            "/car/mux/ackermann_cmd_mux/input/navigation",
-            #"/mushr2/mux/ackermann_cmd_mux/input/navigation",
-            AckermannDriveStamped, queue_size=2
-        )
-
-        self.rp_cte = rospy.Publisher(
-            rospy.get_param(
-                "~cte_viz_topic",
-                default="/controller/cte"
-            ),
-            Float32, queue_size=2
-        )
-
-        self.rp_waypoints = rospy.Publisher(
-            "controller/path/waypoints",
-            #"/mushr2/controller/path/waypoints",
-            Marker, queue_size=2
-        )
-
-        self.rp_waypoint = rospy.Publisher(
-            "controller/path/selected_waypoint",
-            #"/mushr2/controller/path/selected_waypoint",
-            PoseStamped, queue_size=2
-        )
-
-        self.rp_path_viz = rospy.Publisher(
-            "controller/path/poses",
-            #"/mushr2/controller/path/poses",
-            PoseArray, queue_size=2
-        )
-        """
+        
+        # namespace for topic/param names
+        robot_prefix = rospy.get_param("~car_name")
 
         rospy.Subscriber("/initialpose",
                 PoseWithCovarianceStamped, self.cb_init_pose, queue_size=1)
@@ -157,40 +104,47 @@ class ControlNode:
         )
 
         rospy.Subscriber(
-            "/car/goal", PoseStamped, self.cb_goal, queue_size=1
+            #"/car/goal", PoseStamped, self.cb_goal, queue_size=1
+            (robot_prefix + "/goal"), PoseStamped, self.cb_goal, queue_size=1
         )
 
-        rospy.Subscriber("/car/global_planner/path",
+        #rospy.Subscriber("/car/global_planner/path",
+        rospy.Subscriber((robot_prefix + "/global_planner/path"),
                 Path, self.cb_path, queue_size=1)
 
         rospy.Subscriber(rospy.get_param("~pose_cb",default='/car/particle_filter/inferred_pose'),
                          PoseStamped, self.cb_pose, queue_size=10)
 
         self.rp_ctrls = rospy.Publisher(
-            "/car/mux/ackermann_cmd_mux/input/navigation",
+            #"/car/mux/ackermann_cmd_mux/input/navigation",
+            (robot_prefix + "/mux/ackermann_cmd_mux/input/navigation"),
             AckermannDriveStamped, queue_size=2
         )
 
         self.rp_cte = rospy.Publisher(
-            rospy.get_param(
-                "~cte_viz_topic",
-                default="/controller/cte"
-            ),
+            #rospy.get_param(
+            #    "~cte_viz_topic",
+            #    default="/controller/cte"
+            #),
+            (robot_prefix + rospy.get_param("~cte_viz_topic", default="/controller/cte")),
             Float32, queue_size=2
         )
 
         self.rp_waypoints = rospy.Publisher(
-            "/controller/path/waypoints",
+            #"/controller/path/waypoints",
+            (robot_prefix + "/controller/path/waypoints"),
             Marker, queue_size=2
         )
 
         self.rp_waypoint = rospy.Publisher(
-            "/controller/path/selected_waypoint",
+            #"/controller/path/selected_waypoint",
+            (robot_prefix + "/controller/path/selected_waypoint"),
             PoseStamped, queue_size=2
         )
 
         self.rp_path_viz = rospy.Publisher(
-            "/controller/path/poses",
+            #"/controller/path/poses",
+            (robot_prefix + "/controller/path/poses"),
             PoseArray, queue_size=2
         )
 
