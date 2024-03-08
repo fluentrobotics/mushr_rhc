@@ -132,7 +132,7 @@ class ModelPredictiveController(BaseController):
             self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 50.0))
             # Average distance from the current reference pose to lookahed.
             #self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", 0.5))
-            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", self.speed*1.1))
+            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", self.speed*1.5))
             print("== MPC Reference Speed: " + str(self.speed) + " ==")
             print("== MPC Look Ahead: " + str(self.waypoint_lookahead) + " ==")
             print("== MPC Goal Tolerance: " + str(self.finish_threshold) + " ==")
@@ -141,7 +141,7 @@ class ModelPredictiveController(BaseController):
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             #Orientation error
-            self.error_th = float(rospy.get_param("mpc/error_th", 0.1))
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.01))
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.6))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
