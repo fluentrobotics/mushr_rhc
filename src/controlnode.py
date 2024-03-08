@@ -91,7 +91,7 @@ class ControlNode:
         rospy.Service("~reset/params", SrvEmpty, self.srv_reset_params)
         
         # namespace for topic/param names
-        robot_prefix = rospy.get_param("~car_name")
+        robot_prefix = rospy.get_param("~car_name",default='/mushr2')
 
         rospy.Subscriber("/initialpose",
                 PoseWithCovarianceStamped, self.cb_init_pose, queue_size=1)
@@ -112,7 +112,7 @@ class ControlNode:
         rospy.Subscriber((robot_prefix + "/global_planner/path"),
                 Path, self.cb_path, queue_size=1)
 
-        rospy.Subscriber(rospy.get_param("~pose_cb",default='/car/particle_filter/inferred_pose'),
+        rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
                          PoseStamped, self.cb_pose, queue_size=10)
 
         self.rp_ctrls = rospy.Publisher(

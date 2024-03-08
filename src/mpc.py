@@ -118,8 +118,8 @@ class ModelPredictiveController(BaseController):
             self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.33))
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
-            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.163))
-            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.163))
+            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.203))
+            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.203))
 
             self.K = int(rospy.get_param("mpc/K", 62))
             self.T = int(rospy.get_param("mpc/T", 8))
@@ -132,7 +132,7 @@ class ModelPredictiveController(BaseController):
             self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 50.0))
             # Average distance from the current reference pose to lookahed.
             #self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", 0.5))
-            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", self.speed*1.5))
+            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", self.speed*1.1))
             print("== MPC Reference Speed: " + str(self.speed) + " ==")
             print("== MPC Look Ahead: " + str(self.waypoint_lookahead) + " ==")
             print("== MPC Goal Tolerance: " + str(self.finish_threshold) + " ==")
@@ -140,6 +140,8 @@ class ModelPredictiveController(BaseController):
             self.collision_w = float(rospy.get_param("mpc/collision_w", 1e5))
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
+            #Orientation error
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.1))
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.6))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
@@ -195,7 +197,12 @@ class ModelPredictiveController(BaseController):
         collisions.resize(self.K, self.T)
         collision_cost = collisions.sum(axis=1) * self.collision_w
         error_cost = np.linalg.norm(poses[:, self.T - 1, :2] - self.path[index, :2], axis = 1) * self.error_w
-        return collision_cost + error_cost
+        #add orientation error cost
+        r_index = index - 4
+        if r_index <0:
+            r_index=0
+        error_cost_rot = np.abs(np.sin(poses[:, self.T - 1, 2] - self.path[r_index, 2])) * self.error_th
+        return collision_cost + error_cost + error_cost_rot
 
     def check_collisions_in_map(self, poses):
         '''
