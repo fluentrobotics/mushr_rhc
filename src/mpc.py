@@ -118,8 +118,8 @@ class ModelPredictiveController(BaseController):
             self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.33))
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
-            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.203))
-            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.203))
+            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.354))
+            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.354))
 
             self.K = int(rospy.get_param("mpc/K", 62))
             self.T = int(rospy.get_param("mpc/T", 8))
@@ -132,7 +132,7 @@ class ModelPredictiveController(BaseController):
             self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 50.0))
             # Average distance from the current reference pose to lookahed.
             #self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", 0.5))
-            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", self.speed*1.5))
+            self.waypoint_lookahead = float(rospy.get_param("mpc/waypoint_lookahead", self.speed*0.55))
             print("== MPC Reference Speed: " + str(self.speed) + " ==")
             print("== MPC Look Ahead: " + str(self.waypoint_lookahead) + " ==")
             print("== MPC Goal Tolerance: " + str(self.finish_threshold) + " ==")
@@ -141,9 +141,9 @@ class ModelPredictiveController(BaseController):
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             #Orientation error
-            self.error_th = float(rospy.get_param("mpc/error_th", 0.01))
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.1))
 
-            self.car_length = float(rospy.get_param("mpc/car_length", 0.6))
+            self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
 
     def get_control_trajectories(self):
