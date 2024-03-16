@@ -42,35 +42,7 @@ class ModelPredictiveController(BaseController):
             #print('returning ind: ' + str(index))
             return index
 
-    def get_reference_index_by_time(self, cur_time_rel, start_ind_in:int=0):
-        """
-        get reference point by timestamp
-        find the closest pose among ones come after current timestamp      
-        input time is relateive to the reference timestamp of the msg
-
-        return the last index if all of the pose time are behind the current time
-        """
-        traj_length = len(self.traj.traj)
-        out_ind = traj_length -1 #last index
-        start_ind = 0
-        #is_found = False
-
-        if(start_ind_in < traj_length):
-            start_ind = start_ind_in #use start ind only when it's in the valid range
-        with self.path_lock:
-            #find the first index where time stamp is larger than the current
-            #currently a linear serach with starting info
-            for ind in range(start_ind,traj_length):
-                if(self.traj.traj[ind].time_rel > cur_time_rel):
-                    out_ind = ind
-                    break
-            #end of loop
-            
-
-            return out_ind
-
-
-    def get_control(self, pose, index, jeeho_mode=False):
+    def get_control(self, pose, index):
         '''
         get_control - computes the control action given an index into the
             reference trajectory, and the current pose of the car.
@@ -105,12 +77,8 @@ class ModelPredictiveController(BaseController):
                 rollouts[:, t, 0] = cur_x[:, 0] + xdot
                 rollouts[:, t, 1] = cur_x[:, 1] + ydot
                 rollouts[:, t, 2] = cur_x[:, 2] + thetadot
-            
-            if(not jeeho_mode):
-                costs = self.apply_cost(rollouts, index)  # get the cost for each roll out
 
-            else:
-                costs = self.apply_cost_jeeho(rollouts, index)  # get the cost for each roll out
+            costs = self.apply_cost(rollouts, index)  # get the cost for each roll out
 
             min_control = np.argmin(costs)  # find the min
             if(min_cost > costs[min_control]):  # if the min is less than global min,
@@ -119,9 +87,6 @@ class ModelPredictiveController(BaseController):
 
         #print(min_cost)
         return min_cost_ctrl
-    
-
-
 
     def reset_state(self):
         '''
@@ -177,11 +142,6 @@ class ModelPredictiveController(BaseController):
             self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             #Orientation error
             self.error_th = float(rospy.get_param("mpc/error_th", 0.1))
-
-            #x error
-            self.w_x_err = float(rospy.get_param("mpc/w_x_err", 1.0))
-            #y error
-            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 1.0))
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
@@ -243,55 +203,6 @@ class ModelPredictiveController(BaseController):
             r_index=0
         error_cost_rot = np.abs(np.sin(poses[:, self.T - 1, 2] - self.path[r_index, 2])) * self.error_th
         return collision_cost + error_cost + error_cost_rot
-    
-
-    def error_xy(self, cur_pose, index):
-        theta = cur_pose.th
-        c, s = np.cos(theta), np.sin(theta)
-        #R = np.array([(c, s), (-s, c)])
-
-        R = np.array([[c,s],
-                    [-s,c]])
-
-
-        delta_xy_irt_world = np.array([[self.traj.traj[index].x - cur_pose[0]],[self.traj.traj[index].y-cur_pose[1]]])
-        delta_xy_irt_robot = np.matmul(R,delta_xy_irt_world)
-
-        return delta_xy_irt_robot[0], delta_xy_irt_robot[1]
-    
-    def apply_cost_jeeho(self, poses, index):
-        '''
-        rollouts (K,T,3) - poses of each rollout
-        index    (int)   - reference index in path
-        '''
-        all_poses = poses.copy()
-        all_poses.resize(self.K * self.T, 3)
-        collisions = self.check_collisions_in_map(all_poses)
-        collisions.resize(self.K, self.T)
-        collision_cost = collisions.sum(axis=1) * self.collision_w
-
-
-        x_mat = poses[:,self.T-1, 0]
-        y_mat = poses[:,self.T-1, 1]
-        th_mat = poses[:,self.T-1, 2]
-
-        ref_pose = self.traj.traj[index]
-
-        x_err_mat = np.zeros((self.K))
-        y_err_mat = np.zeros((self.K))
-
-        #rotate all by robot angle
-        for row in range(self.K):
-            pivot_robot_pose2d = np.array([[x_mat[row]],[y_mat[row]],[th_mat[row]]])
-            piv_err_x, piv_err_y = self.error_xy(pivot_robot_pose2d, ref_pose)
-
-            x_err_mat[row] = piv_err_x
-            y_err_mat[row] = piv_err_y
-
-        x_err_cost = x_err_mat * self.w_x_err
-        y_err_cost = y_err_mat * self.w_y_err        
-
-        return collision_cost + x_err_cost + y_err_cost
 
     def check_collisions_in_map(self, poses):
         '''

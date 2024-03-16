@@ -27,22 +27,8 @@ class BaseController(object):
         with self.path_lock:
             self.path = np.array([np.array([path[i].x, path[i].y, path[i].h, path[i].v]) for i in range(len(path))])
             self.reset_state()
-            self.is_traj = False
             self._ready = True
             self.waypoint_diff = np.average(np.linalg.norm(np.diff(self.path[:, :2], axis=0), axis=1))
-
-    def set_trajectory(self, traj_in):
-        """
-        get timed path
-        """
-        with self.path_lock:
-            #self.path = np.array([np.array([path[i].x, path[i].y, path[i].h, path[i].v]) for i in range(len(path))])
-            self.traj = traj_in
-            self.reset_state()
-            self.is_traj = True
-            self._ready = True
-            #self.waypoint_diff = np.average(np.linalg.norm(np.diff(self.path[:, :2], axis=0), axis=1))
-    
 
     def set_goal(self, goal):
         '''
@@ -86,8 +72,6 @@ class BaseController(object):
         with self.path_lock:
             assert len(self.path) > index
             return self.path[index]
-        
-
 
     def get_error(self, pose, index):
         '''
@@ -104,4 +88,3 @@ class BaseController(object):
         c, s = np.cos(theta), np.sin(theta)
         R = np.array([(c, s), (-s, c)])
         return np.matmul(R, self.path[index, :2] - pose[:2])
-

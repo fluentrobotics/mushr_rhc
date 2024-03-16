@@ -24,52 +24,6 @@ controllers = {
     "MPC": mpc.ModelPredictiveController,
 }
 
-class timed_pose2d:
-    def __init__(self) -> None:
-        """
-        Pose object with time
-        time_abs is the abosolute time (i.e. ROS time)
-        time_rel is the relative time (from a ref timestamp)
-        """
-        self.x=0
-        self.y=0
-        self.th=0
-        self.time_abs=-1
-        self.time_rel=-1
-
-    def from_poseStamped(self, ps_in:PoseStamped, ref_time=0):
-        
-        if(ref_time==0):
-            ref_time = rospy.Time.from_sec(0)
-
-        self.x = ps_in.pose.position.x
-        self.y = ps_in.pose.position.y
-        self.th = utils.rosquaternion_to_angle(ps_in.pose.orientation)
-        self.time_abs = ps_in.header.stamp
-        self.time_rel = self.time_abs - ref_time
-
-
-class jeeho_traj:
-    def __init__(self) -> None:
-        self.traj = []
-        self.ref_time = 0
-        self.frame = ""
-
-    def from_nav_path(self, nav_path_msg:Path):
-        """
-        Parse nav_msgs/path
-        Each entry is a geometry_msgs/poseStamped
-        Use the highest header as the source of ref timestamp
-        """
-
-        self.traj.clear()
-
-        self.ref_time = nav_path_msg.header.stamp
-        self.frame = nav_path_msg.header.frame_id
-        
-        for ind in range(len(nav_path_msg.poses)):
-            self.traj.append(timed_pose2d().from_poseStamped(nav_path_msg.poses[ind]))
-
 
 class ControlNode:
     def __init__(self, name):
@@ -94,38 +48,28 @@ class ControlNode:
             self.path_event.wait()
             self.reset_lock.acquire()
             ip = self.inferred_pose
-            ip_time = self.inferred_pose_time
-            
+
             try:
+
                 if ip is not None and self.controller.ready():
-                    if(not self.controller.is_traj): #original tracking
-                        index = self.controller.get_reference_index(ip)
-                        pose = self.controller.get_reference_pose(index)
-                        error = self.controller.get_error(ip, index)
-                        cte = error[1]
+                    index = self.controller.get_reference_index(ip)
+                    pose = self.controller.get_reference_pose(index)
+                    error = self.controller.get_error(ip, index)
+                    cte = error[1]
 
-                        self.publish_selected_pose(pose)
-                        self.publish_cte(cte)
+                    self.publish_selected_pose(pose)
+                    self.publish_cte(cte)
 
-                        next_ctrl = self.controller.get_control(ip, index)
-                        if next_ctrl is not None:
-                            self.publish_ctrl(next_ctrl)
-                        if self.controller.path_complete(ip, error):
-                            print("Goal reached")
-                            self.path_event.clear()
-                            print(ip, error)
-                            self.controller._ready = False
-
-                    else: #use timed path
-                        #choose index by time. (i.e. choose the closest pose by time among ones comes after current time)
-                        index = self.controller.get_reference_index_by_time(ip_time - self.traj.ref_time) #current time from ref timestamp
-                        ref_pose = self.controller.get_reference_pose(index)
-                        
-                        next_ctrl = self.controller.get_control(ip, ref_pose,True)
-
+                    next_ctrl = self.controller.get_control(ip, index)
+                    if next_ctrl is not None:
+                        self.publish_ctrl(next_ctrl)
+                    if self.controller.path_complete(ip, error):
+                        print("Goal reached")
+                        self.path_event.clear()
+                        print(ip, error)
+                        self.controller._ready = False
             except:
                 pass
-
 
             self.reset_lock.release()
             rate.sleep()
@@ -167,8 +111,6 @@ class ControlNode:
         #rospy.Subscriber("/car/global_planner/path",
         rospy.Subscriber((robot_prefix + "/global_planner/path"),
                 Path, self.cb_path, queue_size=1)
-
-        rospy.Subscriber((robot_prefix + "/timed_path"), Path, self.cb_timed_path, queue_size=1)
 
         rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
                          PoseStamped, self.cb_pose, queue_size=10)
@@ -243,7 +185,6 @@ class ControlNode:
         self.inferred_pose = utils.rospose_to_posetup(msg.pose.pose)
 
     def cb_path(self, msg):
-        
         print("Got path!")
         trajectory = XYHVPath()
         for i in range(len(msg.poses)):
@@ -262,24 +203,6 @@ class ControlNode:
         self.path_event.set()
         print("Path set")
         return True
-        
-        """
-        print("Timed path received")
-        trajectory = jeeho_traj().from_nav_path(msg)
-        self.controller.set_trajectory(trajectory)
-        self.path_event.set()
-        print("Timed Path set")
-        return True
-        """
-    
-    def cb_timed_path(self, msg):
-        print("Timed path received")
-        trajectory = jeeho_traj().from_nav_path(msg)
-        self.controller.set_trajectory(trajectory)
-        self.path_event.set()
-        print("Timed Path set")
-        return True
-
 
     def cb_goal(self, msg):
         self.path = None
@@ -300,9 +223,6 @@ class ControlNode:
             msg.pose.position.x,
             msg.pose.position.y,
             utils.rosquaternion_to_angle(msg.pose.orientation)]
-
-        self.inferred_pose_time = msg.header.stamp
-
 
     def publish_ctrl(self, ctrl):
         assert len(ctrl) == 2
