@@ -2,9 +2,85 @@ import numpy as np
 import rospy
 import utils
 import time
+import math
 from controller import BaseController
-
+from geometry_msgs.msg import PoseStamped #todo: find a way to bring it out of this file
+from nav_msgs.msg import Path
 from nav_msgs.srv import GetMap
+
+class timed_pose2d:
+    def __init__(self) -> None:
+        """
+        Pose object with time
+        time_abs is the abosolute time (i.e. ROS time)
+        time_rel is the relative time (from a ref timestamp)
+        """
+        self.x=0
+        self.y=0
+        self.th=0
+        self.time_abs=-1
+        self.time_rel=-1
+
+    def from_poseStamped(self, ps_in:PoseStamped, ref_time=0):
+        
+        self.x = ps_in.pose.position.x
+        self.y = ps_in.pose.position.y
+        self.th = utils.rosquaternion_to_angle(ps_in.pose.orientation)
+        self.time_abs = ref_time #todo: fix
+        self.time_rel = self.time_abs - ref_time
+
+    def from_numpy(self, np_in:np.ndarray):
+        self.x = np_in[0]
+        self.y = np_in[1]
+        self.th = np_in[2]
+
+    def to_numpy(self):
+        out_np = np.array([self.x, self.y, self.th])
+        return out_np
+
+
+class jeeho_traj:
+    def __init__(self) -> None:
+        self.traj = []
+        self.ref_time = 0
+        self.frame = ""
+
+    def from_nav_path(self, nav_path_msg:Path):
+        """
+        Parse nav_msgs/path
+        Each entry is a geometry_msgs/poseStamped
+        Use the highest header as the source of ref timestamp
+        """
+
+        self.traj.clear()
+
+        self.ref_time = nav_path_msg.header.stamp.to_sec()
+        self.frame = nav_path_msg.header.frame_id
+
+        skip_first = 5
+        
+        for ind in range(skip_first,len(nav_path_msg.poses)):
+            #temporary manipulation of timestamp
+            pp = timed_pose2d()
+            pp.from_poseStamped(nav_path_msg.poses[ind],self.ref_time)
+            pp.time_rel = ind*0.265
+            self.traj.append(pp)
+
+            #print reference vel
+            if(ind > skip_first):
+                piv_ind = ind-skip_first
+                dl = math.sqrt( (self.traj[piv_ind].x - self.traj[piv_ind-1].x)**2 + (self.traj[piv_ind].y - self.traj[piv_ind-1].y)**2 )
+                dt = self.traj[piv_ind].time_rel - self.traj[piv_ind-1].time_rel
+                print("ref_vel " + str(ind) + str(": ") + str(dl/dt))
+
+    def to_numpy(self) -> np.array:
+        traj_len = len(self.traj)
+        out_np = np.zeros((traj_len,3))
+        
+        for ind in range(traj_len):
+            out_np[ind] = np.array([self.traj[ind].x, self.traj[ind].y, self.traj[ind].th])
+
+        return out_np
 
 
 class ModelPredictiveController(BaseController):
@@ -14,7 +90,7 @@ class ModelPredictiveController(BaseController):
         self.reset_params()
         self.reset_state()
 
-    def get_reference_index(self, pose):
+    def get_reference_index(self, pose, use_lookahead = True):
         '''
         get_reference_index finds the index i in the controller's path
             to compute the next control control against
@@ -31,9 +107,10 @@ class ModelPredictiveController(BaseController):
             #print("path length: " + str(len(self.path)))
             #print('init ind: ' + str(index))
             
-            while(dist[index] < self.waypoint_lookahead and index <= len(self.path) - 2):
-                index += 1
-                index = min(index, len(self.path)-1)
+            if(use_lookahead):
+                while(dist[index] < self.waypoint_lookahead and index <= len(self.path) - 2):
+                    index += 1
+                    index = min(index, len(self.path)-1)
              
             if(len(self.path)==1):
                 self.index = 0
@@ -42,7 +119,7 @@ class ModelPredictiveController(BaseController):
             #print('returning ind: ' + str(index))
             return index
 
-    def get_reference_index_by_time(self, cur_time_rel, start_ind_in:int=0):
+    def get_reference_index_by_time(self, cur_time_abs, start_ind_in:int=0):
         """
         get reference point by timestamp
         find the closest pose among ones come after current timestamp      
@@ -50,7 +127,8 @@ class ModelPredictiveController(BaseController):
 
         return the last index if all of the pose time are behind the current time
         """
-        traj_length = len(self.traj.traj)
+        cur_time_rel = cur_time_abs - self.trajectory.ref_time
+        traj_length = len(self.trajectory.traj)
         out_ind = traj_length -1 #last index
         start_ind = 0
         #is_found = False
@@ -61,9 +139,11 @@ class ModelPredictiveController(BaseController):
             #find the first index where time stamp is larger than the current
             #currently a linear serach with starting info
             for ind in range(start_ind,traj_length):
-                if(self.traj.traj[ind].time_rel > cur_time_rel):
+                if(self.trajectory.traj[ind].time_rel > cur_time_rel):
                     out_ind = ind
                     break
+                else:
+                    pass
             #end of loop
             
 
@@ -110,7 +190,7 @@ class ModelPredictiveController(BaseController):
                 costs = self.apply_cost(rollouts, index)  # get the cost for each roll out
 
             else:
-                costs = self.apply_cost_jeeho(rollouts, index)  # get the cost for each roll out
+                costs = self.apply_cost_jeeho(rollouts, index, pose)  # get the cost for each roll out
 
             min_control = np.argmin(costs)  # find the min
             if(min_cost > costs[min_control]):  # if the min is less than global min,
@@ -153,16 +233,16 @@ class ModelPredictiveController(BaseController):
             self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.33))
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
-            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.354))
-            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.354))
+            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.384))
+            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.384))
 
-            self.K = int(rospy.get_param("mpc/K", 62))
-            self.T = int(rospy.get_param("mpc/T", 8))
+            self.K = int(rospy.get_param("mpc/K", 89))
+            self.T = int(rospy.get_param("mpc/T", 12))
 
             self.speed = float(rospy.get_param("mpc/speed", 0.4))
             
             #self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.5))
-            self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.25))
+            self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.1))
             #self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 100.0))
             self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 50.0))
             # Average distance from the current reference pose to lookahed.
@@ -178,10 +258,10 @@ class ModelPredictiveController(BaseController):
             #Orientation error
             self.error_th = float(rospy.get_param("mpc/error_th", 0.1))
 
-            #x error
+            #x error (might be a good idea to have this value varying by dist error)
             self.w_x_err = float(rospy.get_param("mpc/w_x_err", 1.0))
             #y error
-            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 1.0))
+            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 5.0))
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
@@ -245,21 +325,32 @@ class ModelPredictiveController(BaseController):
         return collision_cost + error_cost + error_cost_rot
     
 
-    def error_xy(self, cur_pose, index):
-        theta = cur_pose.th
+    def error_xy(self, cur_pose, ref_pose, use_manual_th = False, manual_th = 0):
+
+        #took 21.5 ns to check time on my PC
+        if isinstance(ref_pose,np.ndarray):
+            temp_obj = timed_pose2d()
+            temp_obj.from_numpy(ref_pose)
+            ref_pose = temp_obj
+
+        theta = 0
+        if(not use_manual_th):
+            theta = cur_pose[2]
+        else:
+            theta = manual_th
+
         c, s = np.cos(theta), np.sin(theta)
         #R = np.array([(c, s), (-s, c)])
 
         R = np.array([[c,s],
                     [-s,c]])
 
+        delta_xy_irt_world = np.array([ref_pose.x - cur_pose[0],ref_pose.y-cur_pose[1]])
+        delta_xy_irt_robot = np.matmul(R,delta_xy_irt_world.T)
 
-        delta_xy_irt_world = np.array([[self.traj.traj[index].x - cur_pose[0]],[self.traj.traj[index].y-cur_pose[1]]])
-        delta_xy_irt_robot = np.matmul(R,delta_xy_irt_world)
-
-        return delta_xy_irt_robot[0], delta_xy_irt_robot[1]
+        return abs(delta_xy_irt_robot[0]), abs(delta_xy_irt_robot[1])
     
-    def apply_cost_jeeho(self, poses, index):
+    def apply_cost_jeeho(self, poses, index, cur_pose):
         '''
         rollouts (K,T,3) - poses of each rollout
         index    (int)   - reference index in path
@@ -270,28 +361,52 @@ class ModelPredictiveController(BaseController):
         collisions.resize(self.K, self.T)
         collision_cost = collisions.sum(axis=1) * self.collision_w
 
-
         x_mat = poses[:,self.T-1, 0]
         y_mat = poses[:,self.T-1, 1]
         th_mat = poses[:,self.T-1, 2]
 
-        ref_pose = self.traj.traj[index]
+        ref_pose = self.trajectory.traj[index]
 
         x_err_mat = np.zeros((self.K))
         y_err_mat = np.zeros((self.K))
+        y_path_err_mat = np.zeros((self.K))
+
+        #current error from the cloeset point on path i.r.t. robot        
+        closest_index = self.get_reference_index(cur_pose,use_lookahead = False)
+        closest_pose = self.get_reference_pose(closest_index)
 
         #rotate all by robot angle
         for row in range(self.K):
-            pivot_robot_pose2d = np.array([[x_mat[row]],[y_mat[row]],[th_mat[row]]])
-            piv_err_x, piv_err_y = self.error_xy(pivot_robot_pose2d, ref_pose)
+            pivot_robot_pose2d = np.array([x_mat[row],y_mat[row],th_mat[row]]).T
+            piv_err_x, piv_err_y = self.error_xy(pivot_robot_pose2d, ref_pose, use_manual_th = True, manual_th = cur_pose[2])
+            
+            #_, err_y_path_irt_robot = self.error_xy(pivot_robot_pose2d, closest_pose)
 
             x_err_mat[row] = piv_err_x
             y_err_mat[row] = piv_err_y
+            #y_path_err_mat[row] = err_y_path_irt_robot
+
+        # varying x_error weight
+        ## L2 norm to referece pose
+        # ref_pose_np = ref_pose.to_numpy()
+        # l2_norm = np.linalg.norm(ref_pose_np, cur_pose)
+        # current error from reference pose in y i.r.t. robot
+        err_x_irt_robot, err_y_irt_robot = self.error_xy(cur_pose, ref_pose)
+
+        self.w_x_err = err_y_irt_robot/(err_x_irt_robot)
+        #print(self.w_x_err)
 
         x_err_cost = x_err_mat * self.w_x_err
-        y_err_cost = y_err_mat * self.w_y_err        
+        y_err_cost = y_err_mat * self.w_y_err       
+        #y_path_err_cost = y_path_err_mat * self.w_y_err
 
-        return collision_cost + x_err_cost + y_err_cost
+        #distance error
+        error_dist = np.linalg.norm(poses[:, self.T - 1, :2] - self.path[index, :2], axis = 1) * self.w_x_err
+        #orientation error
+        error_cost_rot = np.abs(np.sin(poses[:, self.T - 1, 2] - self.path[closest_index, 2])) * self.error_th
+
+
+        return collision_cost + y_err_cost + error_cost_rot + error_dist
 
     def check_collisions_in_map(self, poses):
         '''

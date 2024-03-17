@@ -17,58 +17,18 @@ import pid
 import purepursuit
 import utils
 
+import numpy as np
+from mpc import timed_pose2d, jeeho_traj
+
+import time
+
+
 controllers = {
     "PID": pid.PIDController,
     "PP": purepursuit.PurePursuitController,
     "NL": nonlinear.NonLinearController,
     "MPC": mpc.ModelPredictiveController,
 }
-
-class timed_pose2d:
-    def __init__(self) -> None:
-        """
-        Pose object with time
-        time_abs is the abosolute time (i.e. ROS time)
-        time_rel is the relative time (from a ref timestamp)
-        """
-        self.x=0
-        self.y=0
-        self.th=0
-        self.time_abs=-1
-        self.time_rel=-1
-
-    def from_poseStamped(self, ps_in:PoseStamped, ref_time=0):
-        
-        if(ref_time==0):
-            ref_time = rospy.Time.from_sec(0)
-
-        self.x = ps_in.pose.position.x
-        self.y = ps_in.pose.position.y
-        self.th = utils.rosquaternion_to_angle(ps_in.pose.orientation)
-        self.time_abs = ps_in.header.stamp
-        self.time_rel = self.time_abs - ref_time
-
-
-class jeeho_traj:
-    def __init__(self) -> None:
-        self.traj = []
-        self.ref_time = 0
-        self.frame = ""
-
-    def from_nav_path(self, nav_path_msg:Path):
-        """
-        Parse nav_msgs/path
-        Each entry is a geometry_msgs/poseStamped
-        Use the highest header as the source of ref timestamp
-        """
-
-        self.traj.clear()
-
-        self.ref_time = nav_path_msg.header.stamp
-        self.frame = nav_path_msg.header.frame_id
-        
-        for ind in range(len(nav_path_msg.poses)):
-            self.traj.append(timed_pose2d().from_poseStamped(nav_path_msg.poses[ind]))
 
 
 class ControlNode:
@@ -91,10 +51,12 @@ class ControlNode:
         print("Control Node Initialized") #when map is not present, it waits indefinately. probably need to handle callback triggered before this
 
         while not rospy.is_shutdown():
+            start_time = time.time()
+
             self.path_event.wait()
             self.reset_lock.acquire()
             ip = self.inferred_pose
-            ip_time = self.inferred_pose_time
+            ip_time = self.inferred_pose_time.to_sec()
             
             try:
                 if ip is not None and self.controller.ready():
@@ -118,16 +80,29 @@ class ControlNode:
 
                     else: #use timed path
                         #choose index by time. (i.e. choose the closest pose by time among ones comes after current time)
-                        index = self.controller.get_reference_index_by_time(ip_time - self.traj.ref_time) #current time from ref timestamp
-                        ref_pose = self.controller.get_reference_pose(index)
                         
-                        next_ctrl = self.controller.get_control(ip, ref_pose,True)
+                        index = self.controller.get_reference_index_by_time(ip_time) #current time from ref timestamp
+                        ref_pose = self.controller.get_reference_pose_traj(index)
+                        error = self.controller.get_error_traj(ip, index)
+                        self.publish_selected_pose2d(ref_pose)
+                        
+                        #temp
+                        #print(ip, error)
+                        next_ctrl = self.controller.get_control(ip, index,True)
+                        if next_ctrl is not None:
+                            self.publish_ctrl(next_ctrl)
+                        if self.controller.path_complete_traj(index, error):
+                            print("Goal reached")
+                            self.path_event.clear()
+                            print(ip, error)
+                            self.controller._ready = False
 
             except:
                 pass
 
-
             self.reset_lock.release()
+            end_time = time.time()
+            print(f'{(end_time-start_time)*1000:.3f} ms')
             rate.sleep()
 
     def shutdown(self):
@@ -170,7 +145,8 @@ class ControlNode:
 
         rospy.Subscriber((robot_prefix + "/timed_path"), Path, self.cb_timed_path, queue_size=1)
 
-        rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
+        #rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
+        rospy.Subscriber(rospy.get_param("~pose_cb",default='/natnet_ros/mushr2/pose'),
                          PoseStamped, self.cb_pose, queue_size=10)
 
         self.rp_ctrls = rospy.Publisher(
@@ -243,7 +219,7 @@ class ControlNode:
         self.inferred_pose = utils.rospose_to_posetup(msg.pose.pose)
 
     def cb_path(self, msg):
-        
+        """
         print("Got path!")
         trajectory = XYHVPath()
         for i in range(len(msg.poses)):
@@ -262,15 +238,18 @@ class ControlNode:
         self.path_event.set()
         print("Path set")
         return True
-        
         """
+        
+        
         print("Timed path received")
-        trajectory = jeeho_traj().from_nav_path(msg)
+        trajectory = jeeho_traj()
+        trajectory.from_nav_path(msg)
         self.controller.set_trajectory(trajectory)
         self.path_event.set()
         print("Timed Path set")
         return True
-        """
+        
+        
     
     def cb_timed_path(self, msg):
         print("Timed path received")
@@ -358,10 +337,21 @@ class ControlNode:
         p = PoseStamped()
         p.header = Header()
         p.header.stamp = rospy.Time.now() - rospy.Duration(0.1) # set to in the past to visualize longer
-        p.header.frame_id = "map"
+        p.header.frame_id = "map_mocap"
         p.pose.position.x = pose[0]
         p.pose.position.y = pose[1]
         p.pose.orientation = utils.angle_to_rosquaternion(pose[2])
+        self.rp_waypoint.publish(p)
+
+
+    def publish_selected_pose2d(self, pose):
+        p = PoseStamped()
+        p.header = Header()
+        p.header.stamp = rospy.Time.now() - rospy.Duration(0.1) # set to in the past to visualize longer
+        p.header.frame_id = "map_mocap"
+        p.pose.position.x = pose.x
+        p.pose.position.y = pose.y
+        p.pose.orientation = utils.angle_to_rosquaternion(pose.th)
         self.rp_waypoint.publish(p)
 
     def publish_cte(self, cte):

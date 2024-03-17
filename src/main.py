@@ -6,7 +6,7 @@ import signal
 import time
 if __name__ == '__main__':
 
-    time.sleep(3)
+    time.sleep(1)
     node = controlnode.ControlNode("controller")
 
     signal.signal(signal.SIGINT, node.shutdown)

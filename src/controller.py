@@ -37,11 +37,15 @@ class BaseController(object):
         """
         with self.path_lock:
             #self.path = np.array([np.array([path[i].x, path[i].y, path[i].h, path[i].v]) for i in range(len(path))])
-            self.traj = traj_in
+            self.trajectory = traj_in
             self.reset_state()
             self.is_traj = True
             self._ready = True
             #self.waypoint_diff = np.average(np.linalg.norm(np.diff(self.path[:, :2], axis=0), axis=1))
+
+            #add to self.path in numpy format
+            self.path = traj_in.to_numpy()
+
     
 
     def set_goal(self, goal):
@@ -77,6 +81,23 @@ class BaseController(object):
         leftover = 2
 
         return (self.get_reference_index(pose) >= (len(self.path) - leftover) and err_l2 < self.finish_threshold) or (err_l2 > self.exceed_threshold)
+    
+    def path_complete_traj(self, cur_index, error):
+        '''
+        path_complete computes whether the vehicle has completed the path
+            based on whether the reference index refers to the final point
+            in the path and whether e_x is below the finish_threshold
+            or e_y exceeds an 'exceed threshold'.
+        input:
+
+            error - error vector [e_x, e_y]
+        output:
+            is_path_complete - boolean stating whether the vehicle has
+                reached the end of the path
+        '''
+        err_l2 = np.linalg.norm(error)
+
+        return (cur_index == (len(self.trajectory.traj)-1) and err_l2 < self.finish_threshold)
 
     def get_reference_pose(self, index):
         '''
@@ -86,6 +107,16 @@ class BaseController(object):
         with self.path_lock:
             assert len(self.path) > index
             return self.path[index]
+        
+    def get_reference_pose_traj(self, index):
+        '''
+        Utility function returns the reference pose from the reference path given a
+            reference index.
+        '''
+        with self.path_lock:
+            assert len(self.trajectory.traj) > index
+            return self.trajectory.traj[index]
+        
         
 
 
@@ -104,4 +135,24 @@ class BaseController(object):
         c, s = np.cos(theta), np.sin(theta)
         R = np.array([(c, s), (-s, c)])
         return np.matmul(R, self.path[index, :2] - pose[:2])
+
+
+    def get_error_traj(self, pose, index):
+        '''
+        Computes the error vector for a given pose and reference index.
+        input:
+            pose - pose of the car [x, y, heading]
+            index - integer corresponding to the reference index into the
+                reference path
+        output:
+            e_p - error vector [e_x, e_y]
+        '''
+        pose = np.array(pose)
+        theta = pose[2]
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([(c, s), (-s, c)])
+
+        ref_pos = np.array([[self.trajectory.traj[index].x, self.trajectory.traj[index].y]])
+
+        return np.matmul(R, (ref_pos - pose[:2]).T)
 
