@@ -178,7 +178,12 @@ class ModelPredictiveController(BaseController):
         #keeping distance
         kd = 0.1
         tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
-        print(tracking_speed)
+        #print(tracking_speed)
+        #for analysis
+        #measure delta time
+        #time_now = time.time()
+        #self.time_analyze = time_now
+        #print("time:" +str(self.time_analyze) + ";e_x:"+str(error_x)+";error_th:"+str(error_th)+";track_vel:"+str(tracking_speed))
 
 
         speed_sign = np.array([-1*tracking_speed, 0 ,1*tracking_speed])
@@ -278,6 +283,9 @@ class ModelPredictiveController(BaseController):
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
+
+            #for analyze
+            self.time_analyze = 0
 
     def get_control_trajectories(self):
         '''
