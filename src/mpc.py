@@ -26,7 +26,7 @@ class timed_pose2d:
         self.x = ps_in.pose.position.x
         self.y = ps_in.pose.position.y
         self.th = utils.rosquaternion_to_angle(ps_in.pose.orientation)
-        self.time_abs = ref_time #todo: fix
+        self.time_abs = ps_in.header.stamp.to_sec()
         self.time_rel = self.time_abs - ref_time
 
     def from_numpy(self, np_in:np.ndarray):
@@ -57,21 +57,21 @@ class jeeho_traj:
         self.ref_time = nav_path_msg.header.stamp.to_sec()
         self.frame = nav_path_msg.header.frame_id
 
-        skip_first = 5
+        skip_first = 5 #todo: make this responsive
         
         for ind in range(skip_first,len(nav_path_msg.poses)):
             #temporary manipulation of timestamp
             pp = timed_pose2d()
             pp.from_poseStamped(nav_path_msg.poses[ind],self.ref_time)
-            pp.time_rel = ind*0.265
+            #pp.time_rel = ind*0.265
             self.traj.append(pp)
 
             #print reference vel
             if(ind > skip_first):
                 piv_ind = ind-skip_first
-                dl = math.sqrt( (self.traj[piv_ind].x - self.traj[piv_ind-1].x)**2 + (self.traj[piv_ind].y - self.traj[piv_ind-1].y)**2 )
-                dt = self.traj[piv_ind].time_rel - self.traj[piv_ind-1].time_rel
-                print("ref_vel " + str(ind) + str(": ") + str(dl/dt))
+                #dl = math.sqrt( (self.traj[piv_ind].x - self.traj[piv_ind-1].x)**2 + (self.traj[piv_ind].y - self.traj[piv_ind-1].y)**2 )
+                #dt = self.traj[piv_ind].time_rel - self.traj[piv_ind-1].time_rel
+                #print("ref_vel " + str(ind) + str(": ") + str(dl/dt))
 
     def to_numpy(self) -> np.array:
         traj_len = len(self.traj)

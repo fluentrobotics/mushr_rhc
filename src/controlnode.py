@@ -30,7 +30,6 @@ controllers = {
     "MPC": mpc.ModelPredictiveController,
 }
 
-
 class ControlNode:
     def __init__(self, name):
         self.ackermann_msg_id = 0        
@@ -51,7 +50,7 @@ class ControlNode:
         print("Control Node Initialized") #when map is not present, it waits indefinately. probably need to handle callback triggered before this
 
         while not rospy.is_shutdown():
-            start_time = time.time()
+            #start_time = time.time()
 
             self.path_event.wait()
             self.reset_lock.acquire()
@@ -80,7 +79,6 @@ class ControlNode:
 
                     else: #use timed path
                         #choose index by time. (i.e. choose the closest pose by time among ones comes after current time)
-                        
                         index = self.controller.get_reference_index_by_time(ip_time) #current time from ref timestamp
                         ref_pose = self.controller.get_reference_pose_traj(index)
                         error = self.controller.get_error_traj(ip, index)
@@ -101,8 +99,8 @@ class ControlNode:
                 pass
 
             self.reset_lock.release()
-            end_time = time.time()
-            print(f'{(end_time-start_time)*1000:.3f} ms')
+            #end_time = time.time()
+            #print(f'{(end_time-start_time)*1000:.3f} ms')
             rate.sleep()
 
     def shutdown(self):
@@ -143,7 +141,7 @@ class ControlNode:
         rospy.Subscriber((robot_prefix + "/global_planner/path"),
                 Path, self.cb_path, queue_size=1)
 
-        rospy.Subscriber((robot_prefix + "/timed_path"), Path, self.cb_timed_path, queue_size=1)
+        rospy.Subscriber((robot_prefix + "/planned_trajectory"), Path, self.cb_trajectory, queue_size=1)
 
         #rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
         rospy.Subscriber(rospy.get_param("~pose_cb",default='/natnet_ros/mushr2/pose'),
@@ -219,7 +217,7 @@ class ControlNode:
         self.inferred_pose = utils.rospose_to_posetup(msg.pose.pose)
 
     def cb_path(self, msg):
-        """
+        
         print("Got path!")
         trajectory = XYHVPath()
         for i in range(len(msg.poses)):
@@ -238,9 +236,8 @@ class ControlNode:
         self.path_event.set()
         print("Path set")
         return True
+    
         """
-        
-        
         print("Timed path received")
         trajectory = jeeho_traj()
         trajectory.from_nav_path(msg)
@@ -248,15 +245,15 @@ class ControlNode:
         self.path_event.set()
         print("Timed Path set")
         return True
-        
-        
+        """
     
-    def cb_timed_path(self, msg):
-        print("Timed path received")
-        trajectory = jeeho_traj().from_nav_path(msg)
+    def cb_trajectory(self, msg):
+        print("Trajectory received")
+        trajectory = jeeho_traj()
+        trajectory.from_nav_path(msg)
         self.controller.set_trajectory(trajectory)
         self.path_event.set()
-        print("Timed Path set")
+        print("Trajectory set")
         return True
 
 
