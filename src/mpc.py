@@ -2,6 +2,7 @@ import numpy as np
 import rospy
 import utils
 import time
+import itertools
 from controller import BaseController
 
 from nav_msgs.srv import GetMap
@@ -308,3 +309,63 @@ class ModelPredictiveController(BaseController):
         out[:, 0] = self.map_c * out[:, 0] - self.map_s * out[:, 1]
         out[:, 1] = self.map_s * temp + self.map_c * out[:, 1]
         out[:, 2] += self.map_angle
+
+    def update_mpc_params_tuning(self, params_dict):
+        '''
+        updates params in accordance to the params dictionary. If param is not in dictionary, it is not changed.
+        '''
+        self.min_delta = float(params_dict.get('min_delta', self.min_delta))
+        self.max_delta = float(params_dict.get('max_delta', self.max_delta))
+        self.K = int(params_dict.get('K', self.K))
+        self.T = int(params_dict.get('T', self.T))
+        self.speed = float(params_dict.get('speed', self.speed))
+        self.finish_threshold = float(params_dict.get('finish_threshold', self.finish_threshold))
+        self.exceed_threshold = float(params_dict.get('exceed_threshold', self.exceed_threshold))
+        self.waypoint_lookahead = float(params_dict.get('waypoint_lookahead', self.waypoint_lookahead))
+        self.collision_w = float(params_dict.get('collision_w', self.collision_w))
+        self.error_w = float(params_dict.get('error_w', self.error_w))
+        self.error_th = float(params_dict.get('error_th', self.error_th))
+
+
+    def mpc_params_generator(self, **kwargs):
+        '''
+        mpc_params_generator iterates through param space to find best values 
+            that result in most accurate path tracking. Each time this function is called,
+            it yields the next possible parameter combination. By default, this only tunes
+            K through np.arange(51,85,2) and T through np.arange(5,25)}.
+        input:
+            kwargs - Keyword arguments corresponding to MPC parameters.
+                Each argument's key is the parameter name as a string,
+                and the value is the range of values to iterate the controller 
+                through. The value type is provided below, but keep in mind that 
+                it is a list of these numbers that should by inputted.
+                Supported parameters include:
+                - 'min_delta': float, the minimum steering angle in radians.
+                - 'max_delta': float, the maximum steering angle in radians.
+                - 'K': int, the number of control trajectories. Will overwrite default.
+                - 'T': int, the time horizon for predictions. Will overwrite default.
+                - 'speed': float, the reference speed in meters per second.
+                - 'finish_threshold': float, the distance within which the target is considered reached.
+                - 'exceed_threshold': float, the threshold distance at which the path is considered exceeded.
+                - 'waypoint_lookahead': float, the lookahead distance for waypoint tracking.
+                - 'collision_w': float, the weight of the collision cost in the cost function.
+                - 'error_w': float, the weight of the tracking error cost in the cost function.
+                - 'error_th': float, the weight of the heading error cost in the cost function.
+
+                Example usage with default values: mpc_params_generator()
+                Example usage with additional params: mpc_params_generator(speed = np.linspace(0.1, 0.6, 4), K = np.arange(40,50))
+        output:
+            params_dict - Dictionary of param combo of most recent call
+        
+        '''
+        default_param_space ={'K': np.arange(51,85,2),
+                              'T': np.arange(5,25)}
+        
+        param_space = {**default_param_space, **kwargs}
+
+        for combo in itertools.product(*(param_space[key] for key in param_space)):
+            params_dict = dict(zip(param_space.keys(), combo))
+            self.update_mpc_params_tuning(params_dict)
+            self.reset_state()
+            yield params_dict
+

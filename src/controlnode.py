@@ -289,3 +289,62 @@ class ControlNode:
 
     def cb_init_pose(self, pose):
         self.path_event.set()
+
+
+    def tune_mpc(self, name):
+        rospy.init_node(name, anonymous=True, disable_signals=True)
+
+        self.setup_pub_sub()
+        self.load_controller()
+        self.ready_event.set()
+
+        rate = rospy.Rate(50)
+        self.inferred_pose = None
+        print("Control Node Initialized") #when map is not present, it waits indefinately. probably need to handle callback triggered before this
+        
+        best_score = float('inf')
+        best_params = None
+        score = [] # average cross track error for now 
+
+
+        while not rospy.is_shutdown():
+            for param in self.controller.mpc_params_generator():  # <-- changes the MPC params
+                pass
+            # generate trajectory
+            # follow trajectory, collect data on error until complete
+            # reset score
+            # move car start position 
+            # move onto next param combination
+
+            self.path_event.wait()
+            self.reset_lock.acquire()
+            ip = self.inferred_pose
+
+            try:
+                if ip is not None and self.controller.ready():
+                    index = self.controller.get_reference_index(ip)
+                    pose = self.controller.get_reference_pose(index)
+                    error = self.controller.get_error(ip, index)
+                    cte = error[1]
+                    score.append(cte)
+
+                    self.publish_selected_pose(pose)
+                    self.publish_cte(cte)
+
+                    next_ctrl = self.controller.get_control(ip, index)
+                    if next_ctrl is not None:
+                        self.publish_ctrl(next_ctrl)
+                    if self.controller.path_complete(ip, error):
+                        print("Goal reached")
+                        self.path_event.clear()
+                        print(ip, error)
+                        self.controller._ready = False
+                        average_score = sum(score)/len(score)
+                        if average_score < best_score:
+                            best_params = param
+                            best_score = average_score
+            except:
+                pass
+
+            self.reset_lock.release()
+            rate.sleep()
