@@ -168,7 +168,20 @@ class ModelPredictiveController(BaseController):
         rollouts = np.zeros((self.K, self.T, 3))
         rollouts[:, 0, :] = np.array(pose)
 
-        speed_sign = np.array([-1*self.speed, 0 ,1*self.speed])
+        # change tracking velocity based on error on x-axis i.r.t. robot
+        ref_pose = self.trajectory.traj[index]
+        error_x, _ = self.error_xy(pose,ref_pose)
+        error_th = ref_pose.th - pose[2]
+
+        #arbitrary Kx
+        Kx = 0.4
+        #keeping distance
+        kd = 0.1
+        tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
+        print(tracking_speed)
+
+
+        speed_sign = np.array([-1*tracking_speed, 0 ,1*tracking_speed])
         #speed_sign = np.array([self.speed])  # we got 3 speeds, forward V, 0, reverse V, where V is the desired speed from the xyhv waypoint
         min_cost = 1000000000   # very large initial cost because we are looking for the minimum.
         #min_cost_ctrl = np.zeros(2)  # default controls are no steering and no throttle
