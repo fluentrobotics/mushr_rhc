@@ -57,7 +57,7 @@ class jeeho_traj:
         self.ref_time = nav_path_msg.header.stamp.to_sec()
         self.frame = nav_path_msg.header.frame_id
 
-        skip_first = 5 #todo: make this responsive
+        skip_first = 2 #todo: make this responsive
         
         for ind in range(skip_first,len(nav_path_msg.poses)):
             #temporary manipulation of timestamp
@@ -174,9 +174,9 @@ class ModelPredictiveController(BaseController):
         error_th = ref_pose.th - pose[2]
 
         #arbitrary Kx
-        Kx = 0.4
+        Kx = 0.45
         #keeping distance
-        kd = 0.1
+        kd = 0.05
         tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
         #print(tracking_speed)
         #for analysis
