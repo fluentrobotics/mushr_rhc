@@ -174,9 +174,9 @@ class ModelPredictiveController(BaseController):
         error_th = ref_pose.th - pose[2]
 
         #arbitrary Kx
-        Kx = 0.6
+        Kx = 0.65
         #keeping distance
-        kd = 0.05
+        kd = 0.02
         tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
         #print(tracking_speed)
         #for analysis
