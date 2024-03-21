@@ -57,7 +57,7 @@ class jeeho_traj:
         self.ref_time = nav_path_msg.header.stamp.to_sec()
         self.frame = nav_path_msg.header.frame_id
 
-        skip_first = 4 #todo: make this responsive
+        skip_first = 3 #todo: make this responsive
         
         for ind in range(skip_first,len(nav_path_msg.poses)):
             #temporary manipulation of timestamp
