@@ -146,7 +146,9 @@ class ModelPredictiveController(BaseController):
                     pass
             #end of loop
             
-
+            #test lookahead
+            #if(out_ind < traj_length-1):
+            #    out_ind +=1
             return out_ind
 
 
@@ -174,10 +176,15 @@ class ModelPredictiveController(BaseController):
         error_th = ref_pose.th - pose[2]
 
         #arbitrary Kx
-        Kx = 0.42
+        Kx = 0.22 #0.42
         #keeping distance
-        kd = 0.12
+        kd = 0.06
         tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
+        
+        if(tracking_speed > 0 and tracking_speed < self.speed):
+            tracking_speed = self.speed
+        elif(tracking_speed < 0 and tracking_speed > -1*self.speed):
+            tracking_speed = self.speed * -1
         #print(tracking_speed)
         #for analysis
         #measure delta time
@@ -251,16 +258,18 @@ class ModelPredictiveController(BaseController):
             self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.33))
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
-            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.384))
-            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.384))
+            #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.384))
+            #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.384))
+            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.45))
+            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.45))
 
             self.K = int(rospy.get_param("mpc/K", 89))
-            self.T = int(rospy.get_param("mpc/T", 12))
+            self.T = int(rospy.get_param("mpc/T", 4))
 
             self.speed = float(rospy.get_param("mpc/speed", 0.4))
             
             #self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.5))
-            self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.1))
+            self.finish_threshold = float(rospy.get_param("mpc/finish_threshold", 0.05))
             #self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 100.0))
             self.exceed_threshold = float(rospy.get_param("mpc/exceed_threshold", 50.0))
             # Average distance from the current reference pose to lookahed.
@@ -269,17 +278,18 @@ class ModelPredictiveController(BaseController):
             print("== MPC Reference Speed: " + str(self.speed) + " ==")
             print("== MPC Look Ahead: " + str(self.waypoint_lookahead) + " ==")
             print("== MPC Goal Tolerance: " + str(self.finish_threshold) + " ==")
+            print("== MPC Steering Limit: " + str(self.max_delta) + " ==")
             
             self.collision_w = float(rospy.get_param("mpc/collision_w", 1e5))
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
             #Orientation error
-            self.error_th = float(rospy.get_param("mpc/error_th", 0.1))
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.05)) #0.1
 
             #x error (might be a good idea to have this value varying by dist error)
-            self.w_x_err = float(rospy.get_param("mpc/w_x_err", 1.0))
+            self.w_x_err = float(rospy.get_param("mpc/w_x_err", 10.0))
             #y error
-            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 5.0))
+            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 0.5)) #5
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
@@ -319,7 +329,7 @@ class ModelPredictiveController(BaseController):
             (x_dot, y_dot, theta_dot) - where each *_dot is a list
                 of k deltas computed by the kinematic car model.
         '''
-        dt = 0.1
+        dt = 0.06
         speed = control[:, 0]
         steering_angle = control[:, 1]
         x_dot = speed * np.cos(cur_x[:, 2]) * dt
@@ -414,20 +424,25 @@ class ModelPredictiveController(BaseController):
         # current error from reference pose in y i.r.t. robot
         err_x_irt_robot, err_y_irt_robot = self.error_xy(cur_pose, ref_pose)
 
-        self.w_x_err = err_y_irt_robot/(err_x_irt_robot)
+        #self.w_x_err = err_y_irt_robot/(err_x_irt_robot)
         #print(self.w_x_err)
 
         x_err_cost = x_err_mat * self.w_x_err
         y_err_cost = y_err_mat * self.w_y_err       
         #y_path_err_cost = y_path_err_mat * self.w_y_err
 
+        mid_arr = poses[:, self.T - 1, :2] - self.path[index, :2]
+
         #distance error
-        error_dist = np.linalg.norm(poses[:, self.T - 1, :2] - self.path[index, :2], axis = 1) * self.w_x_err
+        #error_dist = np.linalg.norm(poses[:, self.T - 1, :2] - self.path[index, :2], axis = 1) * self.w_x_err
+        error_dist = np.linalg.norm(mid_arr, axis = 1) * self.error_w
+        
         #orientation error
         error_cost_rot = np.abs(np.sin(poses[:, self.T - 1, 2] - self.path[closest_index, 2])) * self.error_th
 
 
-        return collision_cost + y_err_cost + error_cost_rot + error_dist
+        #return collision_cost + y_err_cost + error_cost_rot + error_dist
+        return collision_cost + error_dist
 
     def check_collisions_in_map(self, poses):
         '''
