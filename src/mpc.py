@@ -175,16 +175,28 @@ class ModelPredictiveController(BaseController):
         error_x, _ = self.error_xy(pose,ref_pose)
         error_th = ref_pose.th - pose[2]
 
+        # init last steer for this trajectory
+        if index==0:
+            self.last_steer = 0.53
+
         #arbitrary Kx
-        Kx = 0.22 #0.42
+        Kx = 0.42 #0.42
         #keeping distance
-        kd = 0.06
+        kd = 0.12
         tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
         
-        if(tracking_speed > 0 and tracking_speed < self.speed):
-            tracking_speed = self.speed
-        elif(tracking_speed < 0 and tracking_speed > -1*self.speed):
-            tracking_speed = self.speed * -1
+        #if(tracking_speed > 0 and tracking_speed < self.speed):
+        #    tracking_speed = self.speed
+        #elif(tracking_speed < 0 and tracking_speed > -1*self.speed):
+        #    tracking_speed = self.speed * -1
+
+        # max speed
+        max_speed = self.speed*1.5
+        if(tracking_speed > 0 and tracking_speed > max_speed):
+            tracking_speed = max_speed
+        elif(tracking_speed < 0 and tracking_speed < -1*max_speed):
+            tracking_speed = max_speed * -1
+
         #print(tracking_speed)
         #for analysis
         #measure delta time
@@ -200,7 +212,7 @@ class ModelPredictiveController(BaseController):
         min_cost_ctrl=np.array([0,0])
         for sign in range(len(speed_sign)):
             #self.trajs[:, :, 0] = self.path[index, 3] * speed_sign[sign]  # multiply magnitude with sign
-            self.trajs[:,:,0] = speed_sign[sign]
+            self.trajs[:,:,0] = speed_sign[sign] # command candidates for each linear vel
         
             # perform rollouts for each control trajectory
             for t in range(1, self.T):
@@ -213,16 +225,31 @@ class ModelPredictiveController(BaseController):
             
             if(not jeeho_mode):
                 costs = self.apply_cost(rollouts, index)  # get the cost for each roll out
+                min_control = np.argmin(costs)  # find the min
+                if(min_cost > costs[min_control]):  # if the min is less than global min,
+                    min_cost = costs[min_control]  # reset global min
+                    min_cost_ctrl = np.copy(self.trajs[min_control][0])  # save the last best control set.
 
             else:
-                costs = self.apply_cost_jeeho(rollouts, index, pose)  # get the cost for each roll out
+                cost_matrix = self.apply_cost_jeeho(rollouts, index, pose)  # get the cost for each roll out
+                (minRow,minCol) = np.where(cost_matrix==np.min(cost_matrix))
+                if(min_cost > cost_matrix[minRow[0]][minCol[0]]):  # if the min is less than global min,
+                    min_cost = cost_matrix[minRow[0]][minCol[0]]  # reset global min
+                  
+                    min_cost_ctrl = np.copy(self.trajs[minRow[0]][0])  # save the last best control set.
+                    
 
-            min_control = np.argmin(costs)  # find the min
-            if(min_cost > costs[min_control]):  # if the min is less than global min,
-                min_cost = costs[min_control]  # reset global min
-                min_cost_ctrl = np.copy(self.trajs[min_control][0])  # save the last best control set.
+            #min_control = np.argmin(costs)  # find the min
+            #if(min_cost > costs[min_control]):  # if the min is less than global min,
+            #    min_cost = costs[min_control]  # reset global min
+            #    min_cost_ctrl = np.copy(self.trajs[min_control][0])  # save the last best control set.
 
         #print(min_cost)
+        # use last steer for waiting
+        if(min_cost_ctrl[0] == 0):
+            min_cost_ctrl[1] = self.last_steer
+        
+        self.last_steer = min_cost_ctrl[1]
         return min_cost_ctrl
     
 
@@ -263,8 +290,8 @@ class ModelPredictiveController(BaseController):
             self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.45))
             self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.45))
 
-            self.K = int(rospy.get_param("mpc/K", 89))
-            self.T = int(rospy.get_param("mpc/T", 4))
+            self.K = int(rospy.get_param("mpc/K", 65))
+            self.T = int(rospy.get_param("mpc/T", 9))
 
             self.speed = float(rospy.get_param("mpc/speed", 0.4))
             
@@ -282,14 +309,14 @@ class ModelPredictiveController(BaseController):
             
             self.collision_w = float(rospy.get_param("mpc/collision_w", 1e5))
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
-            self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
+            self.error_w = float(rospy.get_param("mpc/error_w", 5.0))
             #Orientation error
-            self.error_th = float(rospy.get_param("mpc/error_th", 0.05)) #0.1
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.01)) #0.1
 
             #x error (might be a good idea to have this value varying by dist error)
             self.w_x_err = float(rospy.get_param("mpc/w_x_err", 10.0))
             #y error
-            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 0.5)) #5
+            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 1)) #5
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
@@ -329,7 +356,7 @@ class ModelPredictiveController(BaseController):
             (x_dot, y_dot, theta_dot) - where each *_dot is a list
                 of k deltas computed by the kinematic car model.
         '''
-        dt = 0.06
+        dt = 0.05
         speed = control[:, 0]
         steering_angle = control[:, 1]
         x_dot = speed * np.cos(cur_x[:, 2]) * dt
@@ -397,6 +424,7 @@ class ModelPredictiveController(BaseController):
         th_mat = poses[:,self.T-1, 2]
 
         ref_pose = self.trajectory.traj[index]
+        
 
         x_err_mat = np.zeros((self.K))
         y_err_mat = np.zeros((self.K))
@@ -424,25 +452,39 @@ class ModelPredictiveController(BaseController):
         # current error from reference pose in y i.r.t. robot
         err_x_irt_robot, err_y_irt_robot = self.error_xy(cur_pose, ref_pose)
 
-        #self.w_x_err = err_y_irt_robot/(err_x_irt_robot)
+        self.w_x_err = err_y_irt_robot/(err_x_irt_robot)
         #print(self.w_x_err)
 
         x_err_cost = x_err_mat * self.w_x_err
         y_err_cost = y_err_mat * self.w_y_err       
         #y_path_err_cost = y_path_err_mat * self.w_y_err
 
-        mid_arr = poses[:, self.T - 1, :2] - self.path[index, :2]
-
-        #distance error
-        #error_dist = np.linalg.norm(poses[:, self.T - 1, :2] - self.path[index, :2], axis = 1) * self.w_x_err
-        error_dist = np.linalg.norm(mid_arr, axis = 1) * self.error_w
+        # The original RHC only uses the furthest estimation on the rollout, which is not optimal
+        #mid_arr = poses[:, self.T - 1, :2] - self.path[index, :2]
         
-        #orientation error
-        error_cost_rot = np.abs(np.sin(poses[:, self.T - 1, 2] - self.path[closest_index, 2])) * self.error_th
+        # candidate offset
+        c_off = 2
+
+        cost_matrix = np.zeros([self.K,self.T- c_off], dtype=float)
+
+        for t in range(c_off,self.T):
+
+            mid_arr = poses[:, t, :2] - self.path[index, :2]
+
+            #distance error
+            #error_dist = np.linalg.norm(mid_arr - self.path[index, :2]) * self.w_x_err
+            error_dist = np.linalg.norm(mid_arr, axis = 1) * self.error_w
+            
+            #orientation error
+            error_cost_rot = np.abs(np.sin(poses[:, t, 2] - self.path[closest_index, 2])) * self.error_th
+
+            #cost_matrix[:,t-c_off] = collision_cost + error_dist
+            cost_matrix[:,t-c_off] = collision_cost + y_err_cost + error_cost_rot + error_dist
 
 
         #return collision_cost + y_err_cost + error_cost_rot + error_dist
-        return collision_cost + error_dist
+        #return collision_cost + error_dist
+        return cost_matrix
 
     def check_collisions_in_map(self, poses):
         '''
