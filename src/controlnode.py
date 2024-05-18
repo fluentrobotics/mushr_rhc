@@ -346,8 +346,8 @@ class ControlNode:
         p = PoseStamped()
         p.header = Header()
         p.header.stamp = rospy.Time.now() - rospy.Duration(0.1) # set to in the past to visualize longer
-        #p.header.frame_id = "map_mocap"
-        p.header.frame_id = "map"
+        p.header.frame_id = "map_mocap"
+        #p.header.frame_id = "map"
         p.pose.position.x = pose.x
         p.pose.position.y = pose.y
         p.pose.orientation = utils.angle_to_rosquaternion(pose.th)
