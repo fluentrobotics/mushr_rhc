@@ -57,7 +57,7 @@ class jeeho_traj:
         self.ref_time = nav_path_msg.header.stamp.to_sec()
         self.frame = nav_path_msg.header.frame_id
 
-        skip_first = 3 #todo: make this responsive
+        skip_first = 1 #todo: make this responsive
         
         for ind in range(skip_first,len(nav_path_msg.poses)):
             #temporary manipulation of timestamp
@@ -180,9 +180,9 @@ class ModelPredictiveController(BaseController):
             self.last_steer = 0.53
 
         #arbitrary Kx
-        Kx = 0.42 #0.42
+        Kx = 0.21 #0.42
         #keeping distance
-        kd = 0.12
+        kd = 0.08 #0.12
         tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
         
         #if(tracking_speed > 0 and tracking_speed < self.speed):
@@ -210,6 +210,10 @@ class ModelPredictiveController(BaseController):
         min_cost = 1000000000   # very large initial cost because we are looking for the minimum.
         #min_cost_ctrl = np.zeros(2)  # default controls are no steering and no throttle
         min_cost_ctrl=np.array([0,0])
+        min_cost_steer_index = 0
+
+       
+
         for sign in range(len(speed_sign)):
             #self.trajs[:, :, 0] = self.path[index, 3] * speed_sign[sign]  # multiply magnitude with sign
             self.trajs[:,:,0] = speed_sign[sign] # command candidates for each linear vel
@@ -237,13 +241,14 @@ class ModelPredictiveController(BaseController):
                     min_cost = cost_matrix[minRow[0]][minCol[0]]  # reset global min
                   
                     min_cost_ctrl = np.copy(self.trajs[minRow[0]][0])  # save the last best control set.
+                    min_cost_steer_index = minRow[0]
                     
 
             #min_control = np.argmin(costs)  # find the min
             #if(min_cost > costs[min_control]):  # if the min is less than global min,
             #    min_cost = costs[min_control]  # reset global min
             #    min_cost_ctrl = np.copy(self.trajs[min_control][0])  # save the last best control set.
-
+        self.last_steer_ind = min_cost_steer_index
         #print(min_cost)
         # use last steer for waiting
         if(min_cost_ctrl[0] == 0):
@@ -282,7 +287,7 @@ class ModelPredictiveController(BaseController):
             testing.
         '''
         with self.path_lock:
-            self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.33))
+            self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.305)) #0.33
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.384))
@@ -290,8 +295,8 @@ class ModelPredictiveController(BaseController):
             self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.45))
             self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.45))
 
-            self.K = int(rospy.get_param("mpc/K", 65))
-            self.T = int(rospy.get_param("mpc/T", 9))
+            self.K = int(rospy.get_param("mpc/K", 72))
+            self.T = int(rospy.get_param("mpc/T", 14))
 
             self.speed = float(rospy.get_param("mpc/speed", 0.4))
             
@@ -309,17 +314,19 @@ class ModelPredictiveController(BaseController):
             
             self.collision_w = float(rospy.get_param("mpc/collision_w", 1e5))
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
-            self.error_w = float(rospy.get_param("mpc/error_w", 5.0))
+            self.error_w = float(rospy.get_param("mpc/error_w", 3.0)) #* xdist
             #Orientation error
-            self.error_th = float(rospy.get_param("mpc/error_th", 0.01)) #0.1
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.00)) #0.1*
 
             #x error (might be a good idea to have this value varying by dist error)
-            self.w_x_err = float(rospy.get_param("mpc/w_x_err", 10.0))
+            self.w_x_err = float(rospy.get_param("mpc/w_x_err", 1.0))
             #y error
-            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 1)) #5
+            self.w_y_err = float(rospy.get_param("mpc/w_y_err", 1.0)) #5*
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
+
+            self.last_steer_ind = self.K/2
 
             #for analyze
             self.time_analyze = 0
@@ -463,7 +470,7 @@ class ModelPredictiveController(BaseController):
         #mid_arr = poses[:, self.T - 1, :2] - self.path[index, :2]
         
         # candidate offset
-        c_off = 2
+        c_off = 1
 
         cost_matrix = np.zeros([self.K,self.T- c_off], dtype=float)
 
@@ -478,8 +485,14 @@ class ModelPredictiveController(BaseController):
             #orientation error
             error_cost_rot = np.abs(np.sin(poses[:, t, 2] - self.path[closest_index, 2])) * self.error_th
 
+            #steer diff
+            #print(self.last_steer_ind)
+            d_steer = np.abs(self.last_steer_ind - np.array(self.K))
+            steer_w = 0.05
+            #print(d_steer)
+
             #cost_matrix[:,t-c_off] = collision_cost + error_dist
-            cost_matrix[:,t-c_off] = collision_cost + y_err_cost + error_cost_rot + error_dist
+            cost_matrix[:,t-c_off] = collision_cost + y_err_cost + error_cost_rot + error_dist + (d_steer * steer_w)
 
 
         #return collision_cost + y_err_cost + error_cost_rot + error_dist
