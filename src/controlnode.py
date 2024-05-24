@@ -18,10 +18,10 @@ import purepursuit
 import utils
 
 import numpy as np
-from mpc import timed_pose2d, jeeho_traj
+from mpc import timed_pose2d
+from trajectory_class import jeeho_traj, interpolate_pose
 
 import time
-
 
 controllers = {
     "PID": pid.PIDController,
@@ -29,6 +29,18 @@ controllers = {
     "NL": nonlinear.NonLinearController,
     "MPC": mpc.ModelPredictiveController,
 }
+
+class ExcThread(threading.Thread):
+
+    def __init__(self, bucket):
+        threading.Thread.__init__(self)
+        self.bucket = bucket
+
+    def run(self):
+        try:
+            raise Exception('An error occured here.')
+        except Exception:
+            self.bucket.put(sys.exc_info())
 
 class ControlNode:
     def __init__(self, name):
@@ -47,6 +59,7 @@ class ControlNode:
 
         rate = rospy.Rate(50)
         self.inferred_pose = None
+        self.inferred_pose_time = None
         print("Control Node Initialized") #when map is not present, it waits indefinately. probably need to handle callback triggered before this
 
         while not rospy.is_shutdown():
@@ -55,7 +68,7 @@ class ControlNode:
             self.path_event.wait()
             self.reset_lock.acquire()
             ip = self.inferred_pose
-            ip_time = self.inferred_pose_time.to_sec()
+            ip_time = self.inferred_pose_time #ROS time
             
             try:
                 if ip is not None and self.controller.ready():
@@ -79,14 +92,29 @@ class ControlNode:
 
                     else: #use timed path
                         #choose index by time. (i.e. choose the closest pose by time among ones comes after current time)
+                        ip_time = ip_time.to_sec()
                         index = self.controller.get_reference_index_by_time(ip_time) #current time from ref timestamp
                         ref_pose = self.controller.get_reference_pose_traj(index)
                         error = self.controller.get_error_traj(ip, index)
                         self.publish_selected_pose2d(ref_pose)
                         
+                        # interpolated pose
+                        i_pose = ref_pose
+                        
+                        if(index != 0):
+                            cur_time_rel = ip_time - self.controller.trajectory.ref_time # delta time from header timestamp
+                            if(cur_time_rel < self.controller.trajectory.traj[-1].time_rel):
+                                #print("traj: " + str(self.controller.trajectory.ref_time))
+                                #print("cur: " + str(cur_time_rel))
+                                i_pose = interpolate_pose(self.controller.trajectory.traj[index-1],ref_pose, cur_time_rel)
+
+
+                        #print(i_pose.x)
                         #temp
                         #print(ip, error)
-                        next_ctrl = self.controller.get_control(ip, index,True)
+                        
+                        next_ctrl = self.controller.get_control(ip, index,True,i_pose)
+                        
                         if next_ctrl is not None:
                             self.publish_ctrl(next_ctrl)
                         if self.controller.path_complete_traj(index, error):
@@ -94,6 +122,9 @@ class ControlNode:
                             self.path_event.clear()
                             print(ip, error)
                             self.controller._ready = False
+                        #publish interpolated point
+                        
+                        self.publish_interpolated_pose2d(i_pose)
 
             except:
                 pass
@@ -173,6 +204,13 @@ class ControlNode:
             (robot_prefix + "/controller/path/selected_waypoint"),
             PoseStamped, queue_size=2
         )
+
+        self.rp_ipoint = rospy.Publisher(
+            #"/controller/path/selected_waypoint",
+            (robot_prefix + "/controller/path/interpolated_waypoint"),
+            PoseStamped, queue_size=2
+        )
+
 
         self.rp_path_viz = rospy.Publisher(
             #"/controller/path/poses",
@@ -279,7 +317,6 @@ class ControlNode:
 
         self.inferred_pose_time = msg.header.stamp
 
-
     def publish_ctrl(self, ctrl):
         assert len(ctrl) == 2
         ctrlmsg = AckermannDriveStamped()
@@ -341,7 +378,7 @@ class ControlNode:
         p.pose.orientation = utils.angle_to_rosquaternion(pose[2])
         self.rp_waypoint.publish(p)
 
-
+    #todo: integrate common parse of timed_pose2d
     def publish_selected_pose2d(self, pose):
         p = PoseStamped()
         p.header = Header()
@@ -352,6 +389,17 @@ class ControlNode:
         p.pose.position.y = pose.y
         p.pose.orientation = utils.angle_to_rosquaternion(pose.th)
         self.rp_waypoint.publish(p)
+
+    def publish_interpolated_pose2d(self, pose):
+        p = PoseStamped()
+        p.header = Header()
+        p.header.stamp = rospy.Time.now() - rospy.Duration(0.1) # set to in the past to visualize longer
+        p.header.frame_id = "map_mocap"
+        #p.header.frame_id = "map"
+        p.pose.position.x = pose.x
+        p.pose.position.y = pose.y
+        p.pose.orientation = utils.angle_to_rosquaternion(pose.th)
+        self.rp_ipoint.publish(p)
 
     def publish_cte(self, cte):
         self.rp_cte.publish(Float32(cte))

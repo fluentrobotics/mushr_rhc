@@ -1,6 +1,6 @@
 import numpy as np
 import threading
-
+from trajectory_class import jeeho_traj
 
 class BaseController(object):
     def __init__(self):
@@ -31,7 +31,7 @@ class BaseController(object):
             self._ready = True
             self.waypoint_diff = np.average(np.linalg.norm(np.diff(self.path[:, :2], axis=0), axis=1))
 
-    def set_trajectory(self, traj_in):
+    def set_trajectory(self, traj_in:jeeho_traj):
         """
         get timed path
         """

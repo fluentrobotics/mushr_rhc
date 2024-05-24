@@ -4,6 +4,9 @@ import controlnode
 import threading
 import signal
 import time
+import sys
+
+
 if __name__ == '__main__':
 
     time.sleep(1)
@@ -13,8 +16,12 @@ if __name__ == '__main__':
 
     controller = threading.Tread(start=node.start)
     controller.start()
+    
 
     while controller.run:
         signal.pause()
 
-    controller.join()
+    try:
+        controller.join()
+    except Exception as e:
+        print("Exception Handled in Main, Details of the Exception:", e)
