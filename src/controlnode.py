@@ -122,6 +122,7 @@ class ControlNode:
                             self.path_event.clear()
                             print(ip, error)
                             self.controller._ready = False
+                            self.controller.reset_params()
                         #publish interpolated point
                         
                         self.publish_interpolated_pose2d(i_pose)
