@@ -251,7 +251,7 @@ class ModelPredictiveController(BaseController):
             # x error weight (might be a good idea to have this value varying by dist error)
             self.x_err_w = float(rospy.get_param("mpc/w_x_err", 1.0))
             # y error weight
-            self.y_err_w = float(rospy.get_param("mpc/w_y_err", 5.0)) #5*
+            self.y_err_w = float(rospy.get_param("mpc/w_y_err", 1.0)) #5*
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
