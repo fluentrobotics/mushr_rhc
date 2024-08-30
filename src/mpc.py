@@ -110,9 +110,9 @@ class ModelPredictiveController(BaseController):
             self.last_steer = 0.53
 
         #arbitrary Kx
-        Kx = 0.4 #0.42
+        Kx = 0.275 #0.42
         #keeping distance
-        kd = 0.23 #0.12
+        kd = 0.185 #0.12 0.26
         tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
         
         #if(tracking_speed > 0 and tracking_speed < self.speed):
@@ -121,7 +121,7 @@ class ModelPredictiveController(BaseController):
         #    tracking_speed = self.speed * -1
 
         # max speed
-        max_speed = self.speed*1.5
+        max_speed = self.speed*1.05
         if(tracking_speed > 0 and tracking_speed > max_speed):
             tracking_speed = max_speed
         elif(tracking_speed < 0 and tracking_speed < -1*max_speed):
@@ -216,13 +216,13 @@ class ModelPredictiveController(BaseController):
             testing.
         '''
         with self.path_lock:
-            self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.305)) #0.33
+            self.wheelbase = float(rospy.get_param("trajgen/wheelbase", 0.3)) #0.33
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.34))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.34))
             #self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.384))
             #self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.384))
-            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.45))
-            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.45))
+            self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.38))
+            self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.38))
 
             self.K = int(rospy.get_param("mpc/K", 65))
             self.T = int(rospy.get_param("mpc/T", 14))
@@ -244,20 +244,20 @@ class ModelPredictiveController(BaseController):
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
 
             # Euclidean distance error weight
-            self.error_w = float(rospy.get_param("mpc/error_w", 3.0)) #* xdist
+            self.error_w = float(rospy.get_param("mpc/error_w", 1.0)) #* xdist
             #Orientation error
-            self.error_th = float(rospy.get_param("mpc/error_th", 0.01)) #0.1*
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.18)) #0.1*
 
             # x error weight (might be a good idea to have this value varying by dist error)
             self.x_err_w = float(rospy.get_param("mpc/w_x_err", 1.0))
             # y error weight
-            self.y_err_w = float(rospy.get_param("mpc/w_y_err", 1.0)) #5*
+            self.y_err_w = float(rospy.get_param("mpc/w_y_err", 0.6)) #5*
 
-            self.car_length = float(rospy.get_param("mpc/car_length", 0.7))
-            self.car_width = float(rospy.get_param("mpc/car_width", 0.4))
+            self.car_length = float(rospy.get_param("mpc/car_length", 0.6))
+            self.car_width = float(rospy.get_param("mpc/car_width", 0.3))
 
             # Steer difference weight
-            self.steer_w = 0.00
+            self.steer_w = 0.4
             self.last_steer_ind = self.K/2 #initial value
 
             # for analyze
@@ -413,7 +413,7 @@ class ModelPredictiveController(BaseController):
         #mid_arr = poses[:, self.T - 1, :2] - self.path[index, :2]
         
         # candidate offset
-        c_off = 1
+        c_off = 3
 
         cost_matrix = np.zeros([self.K,self.T- c_off], dtype=float)
 

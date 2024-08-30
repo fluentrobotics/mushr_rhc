@@ -50,6 +50,9 @@ class ControlNode:
         self.ready_event = threading.Event()
         self.start(name)
 
+        # for execution time
+        self.exec_time = 0
+
     def start(self, name):
         rospy.init_node(name, anonymous=True, disable_signals=True)
 
@@ -118,9 +121,14 @@ class ControlNode:
                         if next_ctrl is not None:
                             self.publish_ctrl(next_ctrl)
                         if self.controller.path_complete_traj(index, error):
+                            # stop measuring exec time
+                            time_exec = (time.time() - self.exec_time) # in seconds
                             print("Goal reached")
                             self.path_event.clear()
                             print(ip, error)
+                            # publish exec_time
+                            self.pub_execution_time.publish(time_exec)
+
                             self.controller._ready = False
                         #publish interpolated point
                         
@@ -218,6 +226,12 @@ class ControlNode:
             PoseArray, queue_size=2
         )
 
+        self.pub_execution_time = rospy.Publisher(
+            (robot_prefix + "/execution_time"),
+            Float32, queue_size=1 #may change to serialized str
+        )
+
+
     def srv_reset_hard(self, msg):
         '''
         Hard reset does a complete reload of the controller.
@@ -291,6 +305,8 @@ class ControlNode:
         trajectory.from_nav_path(msg)
         self.controller.set_trajectory(trajectory)
         self.path_event.set()
+        # start measuring execution time
+        self.exec_time = time.time()
         print("Trajectory set")
         return True
 
