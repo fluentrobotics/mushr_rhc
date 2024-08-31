@@ -9,7 +9,7 @@ import sys
 
 if __name__ == '__main__':
 
-    time.sleep(1)
+    time.sleep(0.5)
     node = controlnode.ControlNode("controller")
 
     signal.signal(signal.SIGINT, node.shutdown)
