@@ -46,6 +46,9 @@ class BaseController(object):
             #add to self.path in numpy format
             self.path = traj_in.to_numpy()
 
+    def set_pushing_status(self, mode_list_in:list):
+        self.mode_list = mode_list_in
+        self.is_pushing = False
     
 
     def set_goal(self, goal):

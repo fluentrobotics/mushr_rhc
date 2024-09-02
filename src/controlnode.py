@@ -5,11 +5,12 @@ from ackermann_msgs.msg import AckermannDriveStamped
 from geometry_msgs.msg import PoseStamped, PoseArray, Pose, PointStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Empty
-from std_msgs.msg import Header, Float32
+from std_msgs.msg import Header, Float32, String
 from std_srvs.srv import Empty as SrvEmpty
 from mushr_rhc.msg import XYHVPath, XYHV
 from nav_msgs.msg import Path
 from visualization_msgs.msg import Marker
+import hexNfloat
 
 import mpc
 import nonlinear
@@ -97,6 +98,21 @@ class ControlNode:
                         #choose index by time. (i.e. choose the closest pose by time among ones comes after current time)
                         ip_time = ip_time.to_sec()
                         index = self.controller.get_reference_index_by_time(ip_time) #current time from ref timestamp
+
+                        #set steering limit by mode
+                        if self.controller.mode_list[index] == 'p' and self.controller.is_pushing == False:
+                            self.controller.min_delta = self.controller.min_steer_push
+                            self.controller.max_delta = self.controller.max_steer_push
+                            self.controller.trajs = self.controller.get_control_trajectories()
+                            self.controller.is_pushing = True
+                            print("Switch to Pushing")
+                        elif self.controller.mode_list[index] == 'n' and self.controller.is_pushing == True:
+                            self.controller.min_delta = self.controller.min_steer_nonpush
+                            self.controller.max_delta = self.controller.max_steer_nonpush
+                            self.controller.trajs = self.controller.get_control_trajectories()
+                            self.controller.is_pushing = False
+                            print("Switch to Non-Pushing")
+
                         ref_pose = self.controller.get_reference_pose_traj(index)
                         error = self.controller.get_error_traj(ip, index)
                         self.publish_selected_pose2d(ref_pose)
@@ -161,7 +177,7 @@ class ControlNode:
         rospy.Service("~reset/params", SrvEmpty, self.srv_reset_params)
         
         # namespace for topic/param names
-        robot_prefix = rospy.get_param("~car_name",default='/mushr2')
+        robot_prefix = rospy.get_param("~car_name",default='/car')
 
         rospy.Subscriber("/initialpose",
                 PoseWithCovarianceStamped, self.cb_init_pose, queue_size=1)
@@ -183,6 +199,9 @@ class ControlNode:
                 Path, self.cb_path, queue_size=1)
 
         rospy.Subscriber((robot_prefix + "/planned_trajectory"), Path, self.cb_trajectory, queue_size=1)
+
+        # Subscriber for path info string
+        rospy.Subscriber((robot_prefix + "/planned_path_serialized"), String, self.cb_path_str, queue_size=1)
 
         #rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
         rospy.Subscriber(rospy.get_param("~pose_cb",default='/natnet_ros/mushr2/pose'),
@@ -226,6 +245,12 @@ class ControlNode:
             #"/controller/path/poses",
             (robot_prefix + "/controller/path/poses"),
             PoseArray, queue_size=2
+        )
+
+        self.nav_path_viz = rospy.Publisher(
+            #"/controller/path/poses",
+            (robot_prefix + "/controller/path_unpacked"),
+            Path, queue_size=2
         )
 
         self.pub_execution_time = rospy.Publisher(
@@ -312,6 +337,58 @@ class ControlNode:
 
         print("Trajectory set")
         return True
+    
+    def path_str_to_nav_path(self, path_str_in:str, timing_str_in:str , data_delim:str, elem_delim:str)->Path:
+        # into list
+        poses_str_list = path_str_in.split(data_delim)
+        timing_str_list = timing_str_in.split(data_delim)
+        
+        #gen nav path
+        nPath = Path()
+        time_ref = rospy.Time.now()
+        nPath.header.stamp = time_ref
+        for n in range(len(poses_str_list)):
+            p = poses_str_list[n]
+            pose_sp = p.split(elem_delim)
+            temp_ps = PoseStamped()
+            temp_ps.pose.position.x = hexNfloat.hex_to_float(pose_sp[0])
+            temp_ps.pose.position.y = hexNfloat.hex_to_float(pose_sp[1])
+
+            yaw = hexNfloat.hex_to_float(pose_sp[2])
+            #to quaternion
+            temp_ps.pose.orientation = utils.angle_to_rosquaternion(yaw)
+
+            #timing
+            time_stamp = hexNfloat.hex_to_float(timing_str_list[n])
+            temp_ps.header.stamp = time_ref + rospy.Duration(time_stamp)
+
+            nPath.poses.append(temp_ps)
+
+        return nPath
+
+
+    def cb_path_str(self, msg:String):
+        group_delim = "!";
+        data_delim = ";";
+        elem_delim = ",";
+        print("Serialized Path Info Received")
+        # split path and mode
+        path_str_sp = msg.data.split(group_delim)
+
+        # reconstruct nav_msgs/Path
+        nPath = self.path_str_to_nav_path(path_str_sp[0],path_str_sp[2],data_delim,elem_delim)
+        nPath.header.frame_id = path_str_sp[3]
+
+        # get mode list
+        mode_list = path_str_sp[1].split(data_delim)
+        self.controller.set_pushing_status(mode_list)
+
+        # trigger run
+        self.cb_trajectory(nPath)
+
+        #vis
+        self.nav_path_viz.publish(nPath)
+
 
 
     def cb_goal(self, msg):

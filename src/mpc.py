@@ -228,6 +228,12 @@ class ModelPredictiveController(BaseController):
             self.min_delta = float(rospy.get_param("trajgen/min_delta", -0.45))
             self.max_delta = float(rospy.get_param("trajgen/max_delta", 0.45))
 
+            self.min_steer_nonpush = -0.45
+            self.max_steer_nonpush = 0.45
+
+            self.min_steer_push = -0.25
+            self.max_steer_push = 0.25
+
             self.K = int(rospy.get_param("mpc/K", 65))
             self.T = int(rospy.get_param("mpc/T", 12))
 
