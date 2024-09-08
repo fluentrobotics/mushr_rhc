@@ -110,10 +110,10 @@ class ModelPredictiveController(BaseController):
             self.last_steer = 0.53
 
         #arbitrary Kx
-        Kx = 0.42 #0.42 0.275
+        Kx = 0.14 #0.42 0.275
         #keeping distance
-        kd = 0.18 #0.12 0.26
-        tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
+        kd = 0.11 #0.12 0.26
+        tracking_speed = 0.99 * self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
         
         #if(tracking_speed > 0 and tracking_speed < self.speed):
         #    tracking_speed = self.speed
@@ -121,7 +121,7 @@ class ModelPredictiveController(BaseController):
         #    tracking_speed = self.speed * -1
 
         # max speed
-        max_speed = self.speed*1.05
+        max_speed = self.speed*1.2
         if(tracking_speed > 0 and tracking_speed > max_speed):
             tracking_speed = max_speed
         elif(tracking_speed < 0 and tracking_speed < -1*max_speed):
@@ -231,8 +231,8 @@ class ModelPredictiveController(BaseController):
             self.min_steer_nonpush = -0.38
             self.max_steer_nonpush = 0.38
 
-            self.min_steer_push = -0.25
-            self.max_steer_push = 0.25
+            self.min_steer_push = -0.26
+            self.max_steer_push = 0.26
 
             self.K = int(rospy.get_param("mpc/K", 65))
             self.T = int(rospy.get_param("mpc/T", 14)) #14
@@ -254,14 +254,14 @@ class ModelPredictiveController(BaseController):
             #self.error_w = float(rospy.get_param("mpc/error_w", 10.0))
 
             # Euclidean distance error weight
-            self.error_w = float(rospy.get_param("mpc/error_w", 0.1)) #* xdist
+            self.error_w = float(rospy.get_param("mpc/error_w", 0.2)) #* xdist
             #Orientation error
-            self.error_th = float(rospy.get_param("mpc/error_th", 0.1)) #0.1*
+            self.error_th = float(rospy.get_param("mpc/error_th", 0.07)) #0.1*
 
             # x error weight (might be a good idea to have this value varying by dist error)
             self.x_err_w = float(rospy.get_param("mpc/w_x_err", 0.2))
             # y error weight
-            self.y_err_w = float(rospy.get_param("mpc/w_y_err", 3.8)) #5*
+            self.y_err_w = float(rospy.get_param("mpc/w_y_err", 7.5)) #5*
 
             self.car_length = float(rospy.get_param("mpc/car_length", 0.5))
             self.car_width = float(rospy.get_param("mpc/car_width", 0.3))

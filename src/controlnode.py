@@ -341,6 +341,11 @@ class ControlNode:
         # start measuring execution time
         self.exec_time = time.time()
         print("Trajectory set")
+        self.controller.min_delta = self.controller.min_steer_nonpush
+        self.controller.max_delta = self.controller.max_steer_nonpush
+        self.controller.trajs = self.controller.get_control_trajectories()
+        self.controller.is_pushing = False
+        print("Switch to Non-Pushing")
         return True
     
 
