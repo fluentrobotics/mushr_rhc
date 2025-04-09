@@ -110,9 +110,9 @@ class ModelPredictiveController(BaseController):
             self.last_steer = 0.53
 
         #arbitrary Kx
-        Kx = 0.4 #0.42
+        Kx = 0.23 #0.42
         #keeping distance
-        kd = 0.23 #0.12
+        kd = 0.2 #0.12
         if(index == len(self.trajectory.traj)-1):
         #    #print("last")
         #    kd = 0

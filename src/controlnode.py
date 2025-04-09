@@ -24,6 +24,9 @@ from trajectory_class import jeeho_traj, interpolate_pose
 
 import time
 
+import binaryTrajectory
+import base64
+
 controllers = {
     "PID": pid.PIDController,
     "PP": purepursuit.PurePursuitController,
@@ -202,6 +205,9 @@ class ControlNode:
 
         # Subscriber for path info string
         rospy.Subscriber((robot_prefix + "/planned_path_serialized"), String, self.cb_path_str, queue_size=1)
+
+        # Subscriber for Serialized ReloPush Trajectory
+        rospy.Subscriber((robot_prefix+"/relopush/serialized_trajectory"), String, self.cb_relopush_traj_str, queue_size=1)
 
         #rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
         rospy.Subscriber(rospy.get_param("~pose_cb",default='/natnet_ros/mushr2/pose'),
@@ -389,7 +395,20 @@ class ControlNode:
         #vis
         self.nav_path_viz.publish(nPath)
 
+    def cb_relopush_traj_str(self, msg:String):
+        print("ReloPush Trajectory Received")
+        encoded_str = msg.data
+        try:
+            # Decode the Base64 string to get the original binary data.
+            binary_data = base64.b64decode(encoded_str)
+            traj_in = binaryTrajectory.trajectory(binary_data)
+            traj_in.print()
 
+            
+        except Exception as e:
+            rospy.logerr("Failed to decode Base64: %s", e)
+        #traj_in = binaryTrajectory.trajectory(msg.data)
+        #traj_in.print()
 
     def cb_goal(self, msg):
         self.path = None
@@ -410,7 +429,7 @@ class ControlNode:
             msg.pose.position.x,
             msg.pose.position.y,
             utils.rosquaternion_to_angle(msg.pose.orientation)]
-
+ 
         self.inferred_pose_time = msg.header.stamp
 
     def publish_ctrl(self, ctrl):
@@ -490,7 +509,7 @@ class ControlNode:
         p = PoseStamped()
         p.header = Header()
         p.header.stamp = rospy.Time.now() - rospy.Duration(0.1) # set to in the past to visualize longer
-        p.header.frame_id = "map_mocap"
+        p.header.frame_id = "map"
         #p.header.frame_id = "map"
         p.pose.position.x = pose.x
         p.pose.position.y = pose.y
