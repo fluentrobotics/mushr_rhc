@@ -1,6 +1,7 @@
 import numpy as np
 import threading
 from trajectory_class import jeeho_traj
+import ReloPushTrajectory
 
 class BaseController(object):
     def __init__(self):
@@ -40,11 +41,26 @@ class BaseController(object):
             self.trajectory = traj_in
             self.reset_state()
             self.is_traj = True
+            self.is_relopush_traj = False
             self._ready = True
             #self.waypoint_diff = np.average(np.linalg.norm(np.diff(self.path[:, :2], axis=0), axis=1))
 
             #add to self.path in numpy format
             self.path = traj_in.to_numpy()
+
+    def set_relopush_trajectory(self, traj_in:ReloPush_trajectory):
+        """
+        ReloPush Trajectory Input
+        """
+        with self.path_lock:
+            traj_in.time_zero = rospy.Time.now()
+            self.trajectory = traj_in
+            self.reset_state()
+            self.is_traj = True
+            self.is_relopush_traj = True
+            self._ready = True
+            
+
 
     def set_pushing_status(self, mode_list_in:list):
         self.mode_list = mode_list_in
@@ -121,8 +137,6 @@ class BaseController(object):
             return self.trajectory.traj[index]
         
         
-
-
     def get_error(self, pose, index):
         '''
         Computes the error vector for a given pose and reference index.

@@ -48,7 +48,7 @@ class trajectory_elem:
         """
         print(f"(x={self.x}, y={self.y}, yaw={self.yaw}, ref_vel={self.ref_vel}, time={self.time}, is_pushing={self.is_pushing})", end="")
 
-class trajectory:
+class ReloPush_trajectory:
     def __init__(self, serialized_trajectory: bytes = None):
         # Define delimiters and header as bytes
         self.header_delim = b"!"

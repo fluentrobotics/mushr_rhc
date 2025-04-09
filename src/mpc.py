@@ -8,6 +8,7 @@ from geometry_msgs.msg import PoseStamped #todo: find a way to bring it out of t
 from nav_msgs.msg import Path
 from nav_msgs.srv import GetMap
 from trajectory_class import jeeho_traj, timed_pose2d, interpolate_pose
+import ReloPushTrajectory
 
 from print_color import print_colored
 from print_color import Color
@@ -70,6 +71,38 @@ class ModelPredictiveController(BaseController):
             #currently a linear serach with starting info
             for ind in range(start_ind,traj_length):
                 if(self.trajectory.traj[ind].time_rel > cur_time_rel):
+                    out_ind = ind
+                    break
+                else:
+                    pass
+            #end of loop
+            
+            #test lookahead
+            #if(out_ind < traj_length-1):
+            #    out_ind +=1
+            return out_ind
+
+        def get_reference_index_by_time_relopush(self, cur_time_abs, start_ind_in:int=0):
+        """
+        get reference point by timestamp
+        find the closest pose among ones come after current timestamp      
+        input time is relateive to the reference timestamp of the msg
+
+        return the last index if all of the pose time are behind the current time
+        """
+        cur_time_rel = cur_time_abs - self.trajectory.time_zero
+        traj_length = len(self.trajectory.trajectory_points)
+        out_ind = traj_length -1 #last index
+        start_ind = 0
+        #is_found = False
+
+        if(start_ind_in < traj_length):
+            start_ind = start_ind_in #use start ind only when it's in the valid range
+        with self.path_lock:
+            #find the first index where time stamp is larger than the current
+            #currently a linear serach with starting info
+            for ind in range(start_ind,traj_length):
+                if(self.trajectory.trajectory_points[ind].time > cur_time_rel):
                     out_ind = ind
                     break
                 else:
