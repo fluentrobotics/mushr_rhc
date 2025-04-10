@@ -1,7 +1,8 @@
 import numpy as np
 import threading
 from trajectory_class import jeeho_traj
-import ReloPushTrajectory
+from ReloPushTrajectory import ReloPush_trajectory
+import rospy
 
 class BaseController(object):
     def __init__(self):
@@ -53,7 +54,7 @@ class BaseController(object):
         ReloPush Trajectory Input
         """
         with self.path_lock:
-            traj_in.time_zero = rospy.Time.now()
+            traj_in.time_zero = rospy.Time.now().to_sec()
             self.trajectory = traj_in
             self.reset_state()
             self.is_traj = True

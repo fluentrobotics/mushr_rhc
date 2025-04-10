@@ -97,9 +97,15 @@ class ControlNode:
                             print(ip, error)
                             self.controller._ready = False
 
-                    elif self.is_relopush_traj == True: # use ReloPush Trajectory
+                    elif self.controller.is_relopush_traj == True: # use ReloPush Trajectory
                         ip_time = ip_time.to_sec()
-                        index = self.controller.get_reference_index_by_time_relopush(ip_time) 
+                        index = self.controller.get_reference_index_by_time_relopush(ip_time)
+
+                        pivot_wpt = self.controller.trajectory.trajectory_points[index]
+                        is_pushing = pivot_wpt.is_pushing
+
+                        print(is_pushing)
+
 
 
                     else: #use timed path
@@ -215,8 +221,12 @@ class ControlNode:
         rospy.Subscriber((robot_prefix+"/relopush/serialized_trajectory"), String, self.cb_relopush_traj_str, queue_size=1)
 
         #rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/particle_filter/inferred_pose'),
-        rospy.Subscriber(rospy.get_param("~pose_cb",default='/natnet_ros/mushr2/pose'),
-                         PoseStamped, self.cb_pose, queue_size=10)
+        rospy.Subscriber(rospy.get_param("~pose_cb",default=robot_prefix+'/car_pose'), PoseStamped, self.cb_pose, queue_size=10)
+        #rospy.Subscriber(rospy.get_param("~pose_cb",default='/natnet_ros/mushr2/pose'),
+        #                 PoseStamped, self.cb_pose, queue_size=10)
+        
+
+
 
         self.rp_ctrls = rospy.Publisher(
             #"/car/mux/ackermann_cmd_mux/input/navigation",
@@ -406,7 +416,7 @@ class ControlNode:
         try:
             # Decode the Base64 string to get the original binary data.
             binary_data = base64.b64decode(encoded_str)
-            traj_in = binaryTrajectory.ReloPush_trajectory(binary_data)
+            traj_in = ReloPushTrajectory.ReloPush_trajectory(binary_data)
             traj_in.print()
 
             self.controller.set_relopush_trajectory(traj_in)
@@ -416,7 +426,7 @@ class ControlNode:
             self.exec_time = time.time()
 
             print("Trajectory set")
-            return True
+            #return True
 
             
         except Exception as e:

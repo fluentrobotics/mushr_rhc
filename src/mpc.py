@@ -8,8 +8,7 @@ from geometry_msgs.msg import PoseStamped #todo: find a way to bring it out of t
 from nav_msgs.msg import Path
 from nav_msgs.srv import GetMap
 from trajectory_class import jeeho_traj, timed_pose2d, interpolate_pose
-import ReloPushTrajectory
-
+from ReloPushTrajectory import ReloPush_trajectory
 from print_color import print_colored
 from print_color import Color
 
@@ -82,7 +81,7 @@ class ModelPredictiveController(BaseController):
             #    out_ind +=1
             return out_ind
 
-        def get_reference_index_by_time_relopush(self, cur_time_abs, start_ind_in:int=0):
+    def get_reference_index_by_time_relopush(self, cur_time_abs, start_ind_in:int=0):
         """
         get reference point by timestamp
         find the closest pose among ones come after current timestamp      
