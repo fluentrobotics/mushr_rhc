@@ -60,6 +60,7 @@ class BaseController(object):
             self.is_traj = True
             self.is_relopush_traj = True
             self._ready = True
+            self.is_pushing = False # none-pushing by default
             
 
 
@@ -118,6 +119,23 @@ class BaseController(object):
         err_l2 = np.linalg.norm(error)
 
         return (cur_index == (len(self.trajectory.traj)-1) and err_l2 < self.finish_threshold)
+    
+    def path_complete_traj_relopush(self, cur_index, error):
+        '''
+        path_complete computes whether the vehicle has completed the path
+            based on whether the reference index refers to the final point
+            in the path and whether e_x is below the finish_threshold
+            or e_y exceeds an 'exceed threshold'.
+        input:
+
+            error - error vector [e_x, e_y]
+        output:
+            is_path_complete - boolean stating whether the vehicle has
+                reached the end of the path
+        '''
+        err_l2 = np.linalg.norm(error)
+
+        return (cur_index == (len(self.trajectory.trajectory_points)-1) and err_l2 < self.finish_threshold)
 
     def get_reference_pose(self, index):
         '''
@@ -171,6 +189,26 @@ class BaseController(object):
         R = np.array([(c, s), (-s, c)])
 
         ref_pos = np.array([[self.trajectory.traj[index].x, self.trajectory.traj[index].y]])
+
+        return np.matmul(R, (ref_pos - pose[:2]).T)
+    
+
+    def get_error_traj_relopush(self, pose, index):
+        '''
+        Computes the error vector for a given pose and reference index.
+        input:
+            pose - pose of the car [x, y, heading]
+            index - integer corresponding to the reference index into the
+                reference path
+        output:
+            e_p - error vector [e_x, e_y]
+        '''
+        pose = np.array(pose)
+        theta = pose[2]
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([(c, s), (-s, c)])
+
+        ref_pos = np.array([[self.trajectory.trajectory_points[index].x, self.trajectory.trajectory_points[index].y]])
 
         return np.matmul(R, (ref_pos - pose[:2]).T)
 

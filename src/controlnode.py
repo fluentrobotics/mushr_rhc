@@ -101,10 +101,52 @@ class ControlNode:
                         ip_time = ip_time.to_sec()
                         index = self.controller.get_reference_index_by_time_relopush(ip_time)
 
-                        pivot_wpt = self.controller.trajectory.trajectory_points[index]
-                        is_pushing = pivot_wpt.is_pushing
+                        ref_pose = self.controller.trajectory.trajectory_points[index]
+                        is_pushing = ref_pose.is_pushing
 
-                        print(is_pushing)
+                        #set steering limit by mode
+                        if is_pushing == True and self.controller.is_pushing == False:
+                            self.controller.min_delta = self.controller.min_steer_push
+                            self.controller.max_delta = self.controller.max_steer_push
+                            self.controller.trajs = self.controller.get_control_trajectories_relopush(ref_pose.ref_vel)
+                            self.controller.is_pushing = True
+                            print("Switch to Pushing")
+                        elif is_pushing == False and self.controller.is_pushing == True:
+                            self.controller.min_delta = self.controller.min_steer_nonpush
+                            self.controller.max_delta = self.controller.max_steer_nonpush
+                            self.controller.trajs = self.controller.get_control_trajectories_relopush(ref_pose.ref_vel)
+                            self.controller.is_pushing = False
+                            print("Switch to Non-Pushing")
+
+                        error = self.controller.get_error_traj_relopush(ip, index)
+                        self.publish_selected_pose2d_relopush(ref_pose) # publish topic of reference pose
+
+                        # interpolated pose
+                        i_pose = ref_pose
+                        if(index != 0):
+                            cur_time_rel = ip_time - self.controller.trajectory.time_zero # delta time from header timestamp
+                            if(cur_time_rel < self.controller.trajectory.trajectory_points[-1].time):
+                                #print("traj: " + str(self.controller.trajectory.ref_time))
+                                #print("cur: " + str(cur_time_rel))
+                                i_pose = ReloPushTrajectory.interpolate_pose_relopush(self.controller.trajectory.trajectory_points[index-1],ref_pose, cur_time_rel)
+
+                        next_ctrl = self.controller.get_control_relopush(ip, index,i_pose)
+                        if next_ctrl is not None:
+                            self.publish_ctrl(next_ctrl)
+                        if self.controller.path_complete_traj_relopush(index, error):
+                            # stop measuring exec time
+                            time_exec = (time.time() - self.exec_time) # in seconds
+                            print("Goal reached")
+                            self.path_event.clear()
+                            print(ip, error)
+
+                            # publish exec_time
+                            self.pub_execution_time.publish(time_exec)
+
+                            self.controller._ready = False
+                            self.controller.reset_params()
+                        #publish interpolated point                        
+                        self.publish_interpolated_pose2d_relopush(i_pose)
 
 
 
@@ -538,6 +580,28 @@ class ControlNode:
         p.pose.position.x = pose.x
         p.pose.position.y = pose.y
         p.pose.orientation = utils.angle_to_rosquaternion(pose.th)
+        self.rp_ipoint.publish(p)
+
+    def publish_selected_pose2d_relopush(self, pose:ReloPushTrajectory.trajectory_elem):
+        p = PoseStamped()
+        p.header = Header()
+        p.header.stamp = rospy.Time.now() - rospy.Duration(0.1) # set to in the past to visualize longer
+        p.header.frame_id = "map_mocap"
+        #p.header.frame_id = "map"
+        p.pose.position.x = pose.x
+        p.pose.position.y = pose.y
+        p.pose.orientation = utils.angle_to_rosquaternion(pose.yaw)
+        self.rp_waypoint.publish(p)
+
+    def publish_interpolated_pose2d_relopush(self, pose:ReloPushTrajectory.trajectory_elem):
+        p = PoseStamped()
+        p.header = Header()
+        p.header.stamp = rospy.Time.now() - rospy.Duration(0.1) # set to in the past to visualize longer
+        p.header.frame_id = "map"
+        #p.header.frame_id = "map"
+        p.pose.position.x = pose.x
+        p.pose.position.y = pose.y
+        p.pose.orientation = utils.angle_to_rosquaternion(pose.yaw)
         self.rp_ipoint.publish(p)
 
     def publish_cte(self, cte):

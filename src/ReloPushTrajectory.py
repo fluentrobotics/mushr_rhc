@@ -1,4 +1,5 @@
 import struct
+import numpy as np
 
 def float2binarystr(f_in: float) -> bytes:
     """
@@ -40,6 +41,9 @@ class trajectory_elem:
         self.ref_vel = ref_vel
         self.time = time
         self.is_pushing = is_pushing
+
+    def __array__(self, dtype=None):
+        return np.array([self.x, self.y, self.yaw], dtype=dtype)
 
     def print(self):
         """
@@ -129,3 +133,31 @@ class ReloPush_trajectory:
             print(f"Waypoint {i}:", end=" ")
             wpt.print()
             print()  # Newline after each waypoint
+
+# Function to interpolate between two angles (yaw)
+def interpolate_yaw(th1, th2, t):
+    angle_diff = np.arctan2(np.sin(th2 - th1), np.cos(th2 - th1))
+    return th1 + t * angle_diff
+
+def interpolate_pose_relopush(from_pose:trajectory_elem, to_pose:trajectory_elem, target_time) -> trajectory_elem:
+
+    # Compute the interpolation factor
+    t_factor = (target_time - from_pose.time) / (to_pose.time - from_pose.time)
+
+    # Interpolate x and y
+    x = np.interp(target_time, [from_pose.time, to_pose.time], [from_pose.x, to_pose.x])
+    y = np.interp(target_time, [from_pose.time, to_pose.time], [from_pose.y, to_pose.y])
+
+    # Interpolate th (yaw)
+    yaw = interpolate_yaw(from_pose.yaw, to_pose.yaw, t_factor)
+
+    # Create and return the interpolated pose
+    ipose = trajectory_elem()
+    ipose.x = x
+    ipose.y = y
+    ipose.yaw = yaw
+    ipose.ref_vel = from_pose.ref_vel
+    ipose.is_pushing = from_pose.is_pushing
+    #ipose.time_abs = from_pose.time_abs - from_pose.time + target_time
+    ipose.time = target_time # assume the same time_zero
+    return ipose

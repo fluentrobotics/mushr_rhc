@@ -8,7 +8,7 @@ from geometry_msgs.msg import PoseStamped #todo: find a way to bring it out of t
 from nav_msgs.msg import Path
 from nav_msgs.srv import GetMap
 from trajectory_class import jeeho_traj, timed_pose2d, interpolate_pose
-from ReloPushTrajectory import ReloPush_trajectory
+from ReloPushTrajectory import ReloPush_trajectory, trajectory_elem
 from print_color import print_colored
 from print_color import Color
 
@@ -225,6 +225,102 @@ class ModelPredictiveController(BaseController):
         self.last_steer = min_cost_ctrl[1]
         return min_cost_ctrl
     
+
+    def get_control_relopush(self, pose, index, i_pose:trajectory_elem=trajectory_elem()):
+        '''
+        get_control - computes the control action given an index into the
+            reference trajectory, and the current pose of the car.
+            Note: the output velocity is given in the reference point.
+        input:
+            pose - the vehicle's current pose [x, y, heading]
+            index - an integer corresponding to the reference index into the
+                reference path to control against
+        output:
+            control - [velocity, steering angle]
+        '''
+        assert len(pose) == 3
+
+        # For each K trial, the first position is at the current position
+        rollouts = np.zeros((self.K, self.T, 3))
+        rollouts[:, 0, :] = np.array(pose)
+
+        # change tracking velocity based on error on x-axis i.r.t. robot
+        ref_pose = self.trajectory.trajectory_points[index]
+        error_x, _ = self.error_xy_relopush(pose,ref_pose)
+        error_th = ref_pose.yaw - pose[2]
+  
+        # init last steer for this trajectory
+        if index==0:
+            self.last_steer = 0.53
+
+        #update ref vel
+        self.speed = i_pose.ref_vel
+        #arbitrary Kx
+        Kx = 0.23 #0.42
+        #keeping distance
+        kd = 0.2 #0.12
+        if(index == len(self.trajectory.trajectory_points)-1):
+        #    #print("last")
+        #    kd = 0
+            self.error_th = 0.1
+        tracking_speed = self.speed*math.cos(error_th) + Kx * (error_x-kd) #kanayama linear velocity
+        
+        #if(tracking_speed > 0 and tracking_speed < self.speed):
+        #    tracking_speed = self.speed
+        #elif(tracking_speed < 0 and tracking_speed > -1*self.speed):
+        #    tracking_speed = self.speed * -1
+
+        # max speed
+        max_speed = self.speed*1.2
+        if(tracking_speed > 0 and tracking_speed > max_speed):
+            tracking_speed = max_speed
+        elif(tracking_speed < 0 and tracking_speed < -1*max_speed):
+            tracking_speed = max_speed * -1
+
+        speed_sign = np.array([-1*tracking_speed, 0 ,1*tracking_speed])
+        #speed_sign = np.array([self.speed])  # we got 3 speeds, forward V, 0, reverse V, where V is the desired speed from the xyhv waypoint
+        min_cost = 1000000000   # very large initial cost because we are looking for the minimum.
+        #min_cost_ctrl = np.zeros(2)  # default controls are no steering and no throttle
+        min_cost_ctrl=np.array([0,0])
+        min_cost_steer_index = 0
+
+        for sign in range(len(speed_sign)):
+            #self.trajs[:, :, 0] = self.path[index, 3] * speed_sign[sign]  # multiply magnitude with sign
+            self.trajs[:,:,0] = speed_sign[sign] # command candidates for each linear vel
+        
+            # perform rollouts for each control trajectory
+            for t in range(1, self.T):
+                cur_x = rollouts[:, t - 1]
+                xdot, ydot, thetadot = self.apply_kinematics(cur_x, self.trajs[:, t - 1])
+                #print("xdot: " + str(xdot))
+                rollouts[:, t, 0] = cur_x[:, 0] + xdot
+                rollouts[:, t, 1] = cur_x[:, 1] + ydot
+                rollouts[:, t, 2] = cur_x[:, 2] + thetadot
+            else:       
+                # conver to timed_pose2d to use existing code
+                i_pose_2d = timed_pose2d()
+                i_pose_2d.x = i_pose.x
+                i_pose_2d.y = i_pose.y
+                i_pose_2d.th = i_pose.yaw
+                         
+                cost_matrix = self.apply_cost_jeeho(rollouts, i_pose_2d, pose)  # get the cost for each roll out
+                
+                (minRow,minCol) = np.where(cost_matrix==np.min(cost_matrix))
+                if(min_cost > cost_matrix[minRow[0]][minCol[0]]):  # if the min is less than global min,
+                    min_cost = cost_matrix[minRow[0]][minCol[0]]  # reset global min
+                  
+                    min_cost_ctrl = np.copy(self.trajs[minRow[0]][0])  # save the last best control set.
+                    min_cost_steer_index = minRow[0]
+
+        self.last_steer_ind = min_cost_steer_index
+        #print(min_cost)
+        # use last steer for waiting
+        if(min_cost_ctrl[0] == 0):
+            min_cost_ctrl[1] = self.last_steer
+        
+        self.last_steer = min_cost_ctrl[1]
+        return min_cost_ctrl
+    
     def reset_state(self):
         '''
         Utility function for resetting internal states.
@@ -333,6 +429,27 @@ class ModelPredictiveController(BaseController):
         for t in range(self.T):
             ctrls[:, t, 1] = np.arange(self.min_delta, self.max_delta + step_size, step_size)
         return ctrls
+    
+    def get_control_trajectories_relopush(self, speed_in:float):
+        '''
+        get_control_trajectories computes K control trajectories to be
+            rolled out on each update step. You should only execute this
+            function when initializing the state of the controller.
+
+            various methods can be used for generating a sufficient set
+            of control trajectories, but we suggest stepping over the
+            control space (of steering angles) to create the initial
+            set of control trajectories.
+        output:
+            ctrls - a (K x T x 2) vector which lists K control trajectories
+                of length T
+        '''
+        ctrls = np.zeros((self.K, self.T, 2))
+        step_size = (self.max_delta - self.min_delta) / (self.K - 1)
+        ctrls[:, :, 0] = speed_in
+        for t in range(self.T):
+            ctrls[:, t, 1] = np.arange(self.min_delta, self.max_delta + step_size, step_size)
+        return ctrls
 
     def apply_kinematics(self, cur_x, control):
         '''
@@ -396,9 +513,26 @@ class ModelPredictiveController(BaseController):
         delta_xy_irt_robot = np.matmul(R,delta_xy_irt_world.T)
 
         return abs(delta_xy_irt_robot[0]), abs(delta_xy_irt_robot[1])
+    
 
+    def error_xy_relopush(self, cur_pose, ref_pose:trajectory_elem, use_manual_th = False, manual_th = 0):
 
+        theta = 0
+        if(not use_manual_th):
+            theta = cur_pose[2]
+        else:
+            theta = manual_th
 
+        c, s = np.cos(theta), np.sin(theta)
+        #R = np.array([(c, s), (-s, c)])
+
+        R = np.array([[c,s],
+                    [-s,c]])
+
+        delta_xy_irt_world = np.array([ref_pose.x - cur_pose[0],ref_pose.y-cur_pose[1]])
+        delta_xy_irt_robot = np.matmul(R,delta_xy_irt_world.T)
+
+        return abs(delta_xy_irt_robot[0]), abs(delta_xy_irt_robot[1])
     
     def apply_cost_jeeho(self, poses, i_pose:timed_pose2d, cur_pose):
         '''
@@ -421,10 +555,6 @@ class ModelPredictiveController(BaseController):
         x_err_mat = np.zeros((self.K))
         y_err_mat = np.zeros((self.K))
         #y_path_err_mat = np.zeros((self.K))
-
-        #current error from the cloeset point on path i.r.t. robot        
-        closest_index = self.get_reference_index(cur_pose,use_lookahead = False)
-        #closest_pose = self.get_reference_pose(closest_index)
 
         #rotate all by robot angle
         for row in range(self.K):
