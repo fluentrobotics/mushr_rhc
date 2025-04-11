@@ -130,7 +130,11 @@ class ControlNode:
                                 #print("cur: " + str(cur_time_rel))
                                 i_pose = ReloPushTrajectory.interpolate_pose_relopush(self.controller.trajectory.trajectory_points[index-1],ref_pose, cur_time_rel)
 
-                        next_ctrl = self.controller.get_control_relopush(ip, index,i_pose)
+                        next_ctrl,min_est = self.controller.get_control_relopush(ip, index,i_pose)
+
+                        global last_cmd
+                        last_cmd = next_ctrl #for future use
+
                         if next_ctrl is not None:
                             self.publish_ctrl(next_ctrl)
                         if self.controller.path_complete_traj_relopush(index, error):
@@ -428,6 +432,30 @@ class ControlNode:
             nPath.poses.append(temp_ps)
 
         return nPath
+    
+    def relopush_trj_to_nav_path(self, traj_in:ReloPushTrajectory.ReloPush_trajectory)->Path:
+        #gen nav path
+        nPath = Path()
+        time_ref = rospy.Time.now()
+        nPath.header.stamp = time_ref
+        nPath.header.frame_id = 'map'
+        for n in range(len(traj_in.trajectory_points)):
+            p = traj_in.trajectory_points[n]
+            temp_ps = PoseStamped()
+            temp_ps.pose.position.x = p.x
+            temp_ps.pose.position.y = p.y
+
+            yaw = p.yaw
+            #to quaternion
+            temp_ps.pose.orientation = utils.angle_to_rosquaternion(yaw)
+
+            #timing
+            time_stamp = p.time
+            temp_ps.header.stamp = time_ref + rospy.Duration(time_stamp)
+
+            nPath.poses.append(temp_ps)
+
+        return nPath
 
 
     def cb_path_str(self, msg:String):
@@ -470,7 +498,10 @@ class ControlNode:
             print("Trajectory set")
             #return True
 
-            
+            #vis
+            nPath = self.relopush_trj_to_nav_path(traj_in)
+            self.nav_path_viz.publish(nPath)
+
         except Exception as e:
             rospy.logerr("Failed to decode Base64: %s", e)
         #traj_in = binaryTrajectory.trajectory(msg.data)

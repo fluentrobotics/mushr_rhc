@@ -55,9 +55,9 @@ class trajectory_elem:
 class ReloPush_trajectory:
     def __init__(self, serialized_trajectory: bytes = None):
         # Define delimiters and header as bytes
-        self.header_delim = b"!"
-        self.elem_delim = b";"
-        self.var_delim = b","
+        self.header_delim = b"!!!"
+        self.elem_delim = b";;;"
+        self.var_delim = b",,,"
         self.header = b"t"  # header for trajectory
         self.time_zero = 0.0
         self.trajectory_points = []  # list of trajectory_elem
